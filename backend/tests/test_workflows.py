@@ -14,7 +14,8 @@ from app.config import settings
 from app.database import Base, get_db
 from app.hotwords import hotword_registry
 from app.main import app
-from app.models import AdminUser
+from app.models import AdminUser, Student
+from app.name_resolver import canonicalize_student_names
 
 
 def login(client: TestClient) -> None:
@@ -49,6 +50,10 @@ def test_phase1_multi_student_event_and_avatar(tmp_path):
             ids = [first.json()["id"], second.json()["id"]]
             with TestSession() as session:
                 assert "杨煜洆" in hotword_registry.get(session)
+                active = list(session.query(Student).all())
+                corrected, corrections = canonicalize_student_names("今天杨育成在午休时讲话。", active)
+                assert corrected == "今天杨煜洆在午休时讲话。"
+                assert [(item.original, item.corrected) for item in corrections] == [("杨育成", "杨煜洆")]
 
             status = client.get("/api/asr/status")
             assert status.status_code == 200
@@ -91,12 +96,13 @@ def test_phase1_multi_student_event_and_avatar(tmp_path):
             assert target_candidate["confidence"] >= 0.9
             assert target.json()["id"] in structured.json()["draft"]["student_ids"]
 
-            assert client.delete(f"/api/events/{event.json()['id']}").status_code == 200
-            for student_id in ids:
-                assert client.delete(f"/api/students/{student_id}").status_code == 200
-            assert client.delete(f"/api/students/{target.json()['id']}").status_code == 200
+            cleared = client.delete("/api/students/clear")
+            assert cleared.status_code == 200
+            assert cleared.json() == {"ok": True, "deleted": 1, "archived": 2}
+            assert client.get("/api/students").json() == []
             with TestSession() as session:
                 assert "杨煜洆" not in hotword_registry.get(session)
+            assert client.delete(f"/api/events/{event.json()['id']}").status_code == 200
     finally:
         app.dependency_overrides.clear()
         hotword_registry.invalidate()

@@ -26,6 +26,48 @@ class Resolution:
     auto_selected_ids: list[str]
 
 
+@dataclass(frozen=True)
+class NameCorrection:
+    original: str
+    corrected: str
+
+
+def canonicalize_student_names(transcript: str, students: list[Student]) -> tuple[str, list[NameCorrection]]:
+    """Correct unique, exact-homophone name spans without guessing ambiguous names."""
+    names_by_pinyin: dict[str, list[str]] = {}
+    for student in students:
+        key = student.pinyin.replace(" ", "").lower() if student.pinyin else normalized_pinyin(student.name)
+        names_by_pinyin.setdefault(key, []).append(student.name)
+    name_lengths = sorted({len(name) for names in names_by_pinyin.values() for name in names}, reverse=True)
+
+    replacements: list[tuple[int, int, str, str]] = []
+    occupied: set[int] = set()
+    for match in re.finditer(r"[\u4e00-\u9fff]+", transcript):
+        run = match.group()
+        for start in range(len(run)):
+            for size in name_lengths:
+                if start + size > len(run):
+                    continue
+                original = run[start:start + size]
+                candidates = names_by_pinyin.get(normalized_pinyin(original), [])
+                if len(candidates) != 1 or candidates[0] == original:
+                    continue
+                absolute_start = match.start() + start
+                positions = set(range(absolute_start, absolute_start + size))
+                if positions & occupied:
+                    continue
+                replacements.append((absolute_start, absolute_start + size, original, candidates[0]))
+                occupied.update(positions)
+
+    corrected = transcript
+    corrections: list[NameCorrection] = []
+    for start, end, original, canonical in reversed(replacements):
+        corrected = corrected[:start] + canonical + corrected[end:]
+        corrections.append(NameCorrection(original=original, corrected=canonical))
+    corrections.reverse()
+    return corrected, corrections
+
+
 def resolve_students(transcript: str, students: list[Student], preset_student_id: str | None = None) -> Resolution:
     if preset_student_id:
         selected = next((student for student in students if student.id == preset_student_id), None)

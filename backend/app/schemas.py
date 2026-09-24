@@ -128,9 +128,11 @@ class StructureResponse(BaseModel):
 
 class TranscriptResponse(BaseModel):
     transcript: str
+    original_transcript: str
     provider: str
     elapsed_ms: int
     hotword_count: int
+    name_corrections: list[dict[str, str]] = []
 
 
 class ASRSettingsUpdate(BaseModel):

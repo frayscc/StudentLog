@@ -16,7 +16,7 @@ from .database import Base, engine, get_db
 from .hotwords import hotword_registry
 from .local_config import get_asr_provider_name, save_asr_provider_name
 from .models import AdminUser, Event, Student
-from .name_resolver import normalized_pinyin, resolve_students
+from .name_resolver import canonicalize_student_names, normalized_pinyin, resolve_students
 from .providers import ProviderError, get_llm_provider
 from .schemas import ASRSettingsOut, ASRSettingsUpdate, ASRStatus, EventCreate, EventOut, EventUpdate, LoginRequest, StructureRequest, StructureResponse, StudentCreate, StudentOut, StudentUpdate, TranscriptResponse
 from .services import apply_event, event_out, event_query, parse_student_import, save_avatar, student_out
@@ -116,6 +116,26 @@ async def import_students(file: UploadFile = File(...), db: Session = Depends(ge
     return [student_out(item) for item in students]
 
 
+@app.delete("/api/students/clear", dependencies=[Depends(require_login)])
+def clear_active_students(db: Session = Depends(get_db)):
+    students = list(db.scalars(select(Student).options(selectinload(Student.events)).where(Student.status == "active")))
+    deleted = 0
+    archived = 0
+    for student in students:
+        if student.events:
+            student.status = "inactive"
+            archived += 1
+        else:
+            if student.avatar_path:
+                avatar = settings.data_dir / "avatars" / Path(student.avatar_path).name
+                avatar.unlink(missing_ok=True)
+            db.delete(student)
+            deleted += 1
+    db.commit()
+    hotword_registry.invalidate()
+    return {"ok": True, "deleted": deleted, "archived": archived}
+
+
 @app.get("/api/students/{student_id}", response_model=StudentOut, dependencies=[Depends(require_login)])
 def get_student(student_id: str, db: Session = Depends(get_db)):
     student = db.scalar(select(Student).options(selectinload(Student.events)).where(Student.id == student_id))
@@ -183,7 +203,16 @@ async def transcribe_audio(file: UploadFile = File(...), db: Session = Depends(g
     finally:
         if wav_path is not None:
             wav_path.unlink(missing_ok=True)
-    return TranscriptResponse(transcript=result.transcript, provider=provider.name, elapsed_ms=result.elapsed_ms, hotword_count=len(hotwords))
+    students = list(db.scalars(select(Student).where(Student.status == "active")))
+    transcript, corrections = canonicalize_student_names(result.transcript, students)
+    return TranscriptResponse(
+        transcript=transcript,
+        original_transcript=result.transcript,
+        provider=provider.name,
+        elapsed_ms=result.elapsed_ms,
+        hotword_count=len(hotwords),
+        name_corrections=[{"original": item.original, "corrected": item.corrected} for item in corrections],
+    )
 
 
 @app.get("/api/asr/status", response_model=ASRStatus, dependencies=[Depends(require_login)])

@@ -23,6 +23,8 @@ textarea { resize: vertical; line-height: 1.6; }
 .primary, .secondary, .text-button { min-height: 44px; border-radius: 12px; padding: 0 17px; border: 0; display: inline-flex; align-items: center; justify-content: center; gap: 8px; font-weight: 750; }
 .primary { background: var(--orange); color: white; box-shadow: 0 6px 18px #d85f2f30; }
 .primary:hover { background: #c65023; }
+.header-actions { display: flex; gap: 9px; }
+.danger-outline { color: #a53e2c; border-color: #ddb8af; }
 .primary:disabled { opacity: .65; cursor: wait; }
 .secondary { background: white; color: var(--ink); border: 1px solid var(--line); }
 .text-button { background: transparent; color: #5f6d69; }
