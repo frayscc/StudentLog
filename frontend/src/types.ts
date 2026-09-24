@@ -54,4 +54,5 @@ export type StructureResult = {
   candidates: NameCandidate[]
   provider: string
   requires_student_confirmation: boolean
+  name_corrections: { original: string; corrected: string }[]
 }

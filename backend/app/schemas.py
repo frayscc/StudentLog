@@ -124,6 +124,7 @@ class StructureResponse(BaseModel):
     candidates: list[NameCandidate]
     provider: str
     requires_student_confirmation: bool
+    name_corrections: list[dict[str, str]] = []
 
 
 class TranscriptResponse(BaseModel):

@@ -242,15 +242,23 @@ async def structure_event(payload: StructureRequest, db: Session = Depends(get_d
     students = list(db.scalars(select(Student).where(Student.status == "active")))
     if payload.preset_student_id and not any(student.id == payload.preset_student_id for student in students):
         raise HTTPException(status_code=400, detail="预选学生不存在或已停用")
-    resolution = resolve_students(payload.transcript, students, payload.preset_student_id)
+    transcript, corrections = canonicalize_student_names(payload.transcript, students)
+    resolution = resolve_students(transcript, students, payload.preset_student_id)
     provider = get_llm_provider()
     try:
-        draft = await provider.structure(payload.transcript, resolution.candidates, resolution.auto_selected_ids)
+        draft = await provider.structure(transcript, resolution.candidates, resolution.auto_selected_ids)
     except ProviderError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     confidence_by_id = {item.student_id: item.confidence for item in resolution.candidates}
     requires_confirmation = not draft.student_ids or any(confidence_by_id.get(student_id, 0) < 0.9 for student_id in draft.student_ids)
-    return StructureResponse(transcript=payload.transcript, draft=draft, candidates=resolution.candidates, provider=provider.name, requires_student_confirmation=requires_confirmation)
+    return StructureResponse(
+        transcript=transcript,
+        draft=draft,
+        candidates=resolution.candidates,
+        provider=provider.name,
+        requires_student_confirmation=requires_confirmation,
+        name_corrections=[{"original": item.original, "corrected": item.corrected} for item in corrections],
+    )
 
 
 @app.get("/api/events", response_model=list[EventOut], dependencies=[Depends(require_login)])

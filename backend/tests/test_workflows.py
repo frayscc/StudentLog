@@ -91,8 +91,10 @@ def test_phase1_multi_student_event_and_avatar(tmp_path):
                 assert timeline.status_code == 200
                 assert any(item["id"] == event.json()["id"] for item in timeline.json())
 
-            structured = client.post("/api/ai/structure", json={"transcript": "今天中午杨育成在教室午休时讲话。"})
+            structured = client.post("/api/ai/structure", json={"transcript": "今天中午杨育成和方林在教室午休时讲话。"})
             assert structured.status_code == 200
+            assert structured.json()["transcript"] == "今天中午杨煜洆和方宁在教室午休时讲话。"
+            assert structured.json()["draft"]["event_description"] == "今天中午杨煜洆和方宁在教室午休时讲话。"
             target_candidate = next(item for item in structured.json()["candidates"] if item["student_id"] == target.json()["id"])
             assert target_candidate["confidence"] >= 0.9
             assert target.json()["id"] in structured.json()["draft"]["student_ids"]
