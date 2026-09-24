@@ -43,7 +43,8 @@ def test_phase1_multi_student_event_and_avatar(tmp_path):
             login(client)
             first = client.post("/api/students", json={"student_no": f"A{token}", "name": "测试甲", "aliases": []})
             second = client.post("/api/students", json={"student_no": f"B{token}", "name": "测试乙", "aliases": []})
-            assert first.status_code == second.status_code == 200
+            target = client.post("/api/students", json={"student_no": f"C{token}", "name": "杨煜洆", "aliases": []})
+            assert first.status_code == second.status_code == target.status_code == 200
             ids = [first.json()["id"], second.json()["id"]]
 
             image = Image.new("RGB", (800, 600), "#d85f2f")
@@ -72,9 +73,20 @@ def test_phase1_multi_student_event_and_avatar(tmp_path):
                 assert timeline.status_code == 200
                 assert any(item["id"] == event.json()["id"] for item in timeline.json())
 
+            structured = client.post("/api/ai/structure", json={"transcript": "今天中午杨育成在教室午休时讲话。"})
+            assert structured.status_code == 200
+            target_candidate = next(item for item in structured.json()["candidates"] if item["student_id"] == target.json()["id"])
+            assert target_candidate["confidence"] >= 0.9
+            assert target.json()["id"] in structured.json()["draft"]["student_ids"]
+
+            transcribed = client.post("/api/asr/transcribe", files={"file": ("recording.webm", b"mock-audio", "audio/webm")}, data={"mock_transcript": "测试转写"})
+            assert transcribed.status_code == 200
+            assert transcribed.json()["transcript"] == "测试转写"
+
             assert client.delete(f"/api/events/{event.json()['id']}").status_code == 200
             for student_id in ids:
                 assert client.delete(f"/api/students/{student_id}").status_code == 200
+            assert client.delete(f"/api/students/{target.json()['id']}").status_code == 200
     finally:
         app.dependency_overrides.clear()
         settings.data_dir = original_data_dir

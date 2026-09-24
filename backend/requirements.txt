@@ -7,3 +7,5 @@ Pillow==11.0.0
 alembic==1.14.0
 pytest==8.3.4
 httpx==0.28.1
+pypinyin==0.54.0
+RapidFuzz==3.10.1

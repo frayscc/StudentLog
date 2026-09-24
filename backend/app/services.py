@@ -79,6 +79,8 @@ def apply_event(db: Session, event: Event, payload: EventCreate) -> Event:
         tags.append(tag)
     for field in ("occurred_at", "location", "category", "event_description", "student_response", "teacher_action", "follow_up", "raw_transcript", "record_method"):
         setattr(event, field, getattr(payload, field))
+    event.ai_processed = payload.ai_processed
+    event.ai_confidence = payload.ai_confidence
     event.students = students
     event.tags = tags
     return event

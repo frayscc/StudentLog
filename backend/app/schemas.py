@@ -52,6 +52,8 @@ class EventCreate(BaseModel):
     raw_transcript: str | None = None
     record_method: str = "text"
     tags: list[str] = []
+    ai_processed: bool = False
+    ai_confidence: float | None = None
 
 
 class EventUpdate(EventCreate):
@@ -88,3 +90,41 @@ class EventOut(BaseModel):
 class LoginRequest(BaseModel):
     username: str
     password: str
+
+
+class NameCandidate(BaseModel):
+    student_id: str
+    student_no: str
+    name: str
+    confidence: float = Field(ge=0, le=1)
+    reason: str
+
+
+class StructuredEventDraft(BaseModel):
+    student_ids: list[str] = []
+    occurred_at: datetime
+    location: str | None = None
+    category: str = "其他"
+    event_description: str
+    student_response: str | None = None
+    teacher_action: str | None = None
+    follow_up: str | None = None
+    tags: list[str] = []
+
+
+class StructureRequest(BaseModel):
+    transcript: str = Field(min_length=1, max_length=10000)
+    preset_student_id: str | None = None
+
+
+class StructureResponse(BaseModel):
+    transcript: str
+    draft: StructuredEventDraft
+    candidates: list[NameCandidate]
+    provider: str
+    requires_student_confirmation: bool
+
+
+class TranscriptResponse(BaseModel):
+    transcript: str
+    provider: str

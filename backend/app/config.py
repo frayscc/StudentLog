@@ -11,6 +11,16 @@ class Settings(BaseSettings):
     admin_username: str = "admin"
     admin_password: str = "change-me"
     studentlog_port: int = 8765
+    llm_provider: str = "mock"
+    asr_provider: str = "mock"
+    deepseek_api_key: str = ""
+    deepseek_base_url: str = "https://api.deepseek.com"
+    deepseek_model: str = "deepseek-chat"
+    ali_asr_access_key_id: str = ""
+    ali_asr_access_key_secret: str = ""
+    ali_asr_app_key: str = ""
+    ali_asr_token: str = ""
+    ali_asr_endpoint: str = ""
     data_dir: Path = ROOT_DIR / "data"
     frontend_dist: Path = ROOT_DIR / "frontend" / "dist"
 

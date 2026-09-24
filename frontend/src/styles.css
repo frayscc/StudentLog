@@ -144,6 +144,26 @@ legend span { color: #7b8884; font-weight: 500; font-size: .8rem; margin-left: 6
 .student-picker strong, .student-picker small { display: block; }
 .student-picker small { color: #7e8b87; }
 .sticky-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 26px; }
+.recorder-card { min-height: 390px; max-width: 760px; background: var(--paper); border: 1px solid var(--line); border-radius: 24px; padding: 44px 24px; display: flex; flex-direction: column; align-items: center; text-align: center; }
+.record-orb { width: 94px; height: 94px; border-radius: 50%; display: grid; place-items: center; color: var(--orange); background: #fff0e8; margin-bottom: 22px; }
+.record-orb.active { animation: pulse 1.7s infinite; }
+.record-orb svg { width: 38px; height: 38px; }
+.recorder-card > strong { font-size: 1.25rem; }
+.recorder-card time { font-variant-numeric: tabular-nums; font-size: 2.25rem; font-family: ui-monospace, monospace; margin: 10px 0 26px; color: var(--green); }
+.recorder-card > p { max-width: 500px; color: #74817d; font-size: .84rem; margin: 28px 0 0; }
+.recorder-actions, .capture-actions { display: flex; justify-content: center; flex-wrap: wrap; gap: 10px; }
+.text-capture { max-width: 850px; background: var(--paper); border: 1px solid var(--line); border-radius: 20px; padding: 24px; }
+.text-capture > textarea { font-size: 1.05rem; margin-bottom: 24px; }
+.student-picker.compact { max-height: 190px; overflow-y: auto; }
+.capture-actions { justify-content: flex-end; margin-top: 22px; }
+.capture-error { max-width: 850px; margin-top: 14px; }
+.review-alert { max-width: 850px; display: flex; gap: 8px 18px; flex-wrap: wrap; background: #e9f3ef; border: 1px solid #c7ddd4; border-radius: 13px; padding: 13px 16px; margin-bottom: 22px; }
+.review-alert.attention { background: #fff3e9; border-color: #f1c9ad; }
+.review-alert span { color: #667570; }
+.raw-transcript { margin-top: 22px; border: 1px solid var(--line); border-radius: 12px; padding: 13px 15px; color: #65736e; }
+.raw-transcript summary { cursor: pointer; font-weight: 700; }
+.raw-transcript p { margin: 12px 0 0; white-space: pre-wrap; line-height: 1.65; }
+@keyframes pulse { 0%, 100% { box-shadow: 0 0 0 0 #d85f2f38; } 50% { box-shadow: 0 0 0 18px #d85f2f00; } }
 .scrim { display: none; }
 @media (max-width: 860px) { .quick-grid { grid-template-columns: 1fr 1fr; } .quick-primary { grid-column: span 2; } .profile-head { grid-template-columns: 120px 1fr; } .avatar-upload { width: 120px; height: 120px; } .profile-actions { grid-column: span 2; display: flex; } }
 @media (max-width: 680px) { .sidebar { transform: translateX(-100%); transition: transform .2s ease; width: 270px; } .sidebar.open { transform: none; } .scrim { display: block; position: fixed; inset: 0; border: 0; background: #09211c70; z-index: 15; } .mobile-head { display: flex; position: sticky; top: 0; z-index: 10; background: #f4f2eced; backdrop-filter: blur(12px); align-items: center; justify-content: space-between; padding: 10px 16px; border-bottom: 1px solid #e1dfd8; } .mobile-head span { width: 42px; } .content { margin-left: 0; padding: 28px 18px 64px; } .page-header { align-items: center; margin-bottom: 25px; } .page-header h1 { font-size: 2rem; } .page-header .primary { font-size: 0; padding: 0; width: 44px; } .page-header .primary svg { margin: 0; } .quick-grid { grid-template-columns: 1fr; } .quick-primary { grid-column: auto; } .quick-card { min-height: 96px; padding: 17px; } .toolbar { flex-wrap: wrap; } .toolbar .search { flex-basis: 100%; } .toolbar select { flex: 1; } .student-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 11px; } .student-card > div:last-child { padding: 13px; } .profile-head { grid-template-columns: 94px 1fr; gap: 17px; padding: 18px; } .avatar-upload { width: 94px; height: 94px; } .avatar-upload > span { font-size: 0; } .profile-main h1 { font-size: 2rem; } .counts { gap: 13px; } .profile-actions { grid-column: span 2; } .profile-actions > * { flex: 1; } .form-grid { grid-template-columns: 1fr; } .span-2, .form-actions { grid-column: auto; } .event-row { grid-template-columns: 65px 1fr; padding: 16px; gap: 10px; } .login-card { padding: 30px 24px; } .login-card h1 { font-size: 1.9rem; } }

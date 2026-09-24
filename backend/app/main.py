@@ -1,7 +1,7 @@
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, File, HTTPException, Query, Response, UploadFile
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Response, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import or_, select
@@ -12,7 +12,9 @@ from .auth import create_session, hash_password, require_login, verify_password
 from .config import ensure_data_dirs, settings
 from .database import Base, engine, get_db
 from .models import AdminUser, Event, Student
-from .schemas import EventCreate, EventOut, EventUpdate, LoginRequest, StudentCreate, StudentOut, StudentUpdate
+from .name_resolver import normalized_pinyin, resolve_students
+from .providers import ProviderError, get_asr_provider, get_llm_provider
+from .schemas import EventCreate, EventOut, EventUpdate, LoginRequest, StructureRequest, StructureResponse, StudentCreate, StudentOut, StudentUpdate, TranscriptResponse
 from .services import apply_event, event_out, event_query, parse_student_import, save_avatar, student_out
 
 
@@ -75,7 +77,9 @@ def list_students(q: str = "", include_inactive: bool = False, recent: bool = Fa
 
 @app.post("/api/students", response_model=StudentOut, dependencies=[Depends(require_login)])
 def create_student(payload: StudentCreate, db: Session = Depends(get_db)):
-    student = Student(**payload.model_dump(exclude={"aliases"}), aliases="|".join(payload.aliases))
+    values = payload.model_dump(exclude={"aliases"})
+    values["pinyin"] = values.get("pinyin") or normalized_pinyin(payload.name)
+    student = Student(**values, aliases="|".join(payload.aliases))
     db.add(student)
     try:
         db.commit()
@@ -100,7 +104,7 @@ async def import_students(file: UploadFile = File(...), db: Session = Depends(ge
     existing = set(db.scalars(select(Student.student_no).where(Student.student_no.in_([r.student_no for r in rows]))))
     if existing:
         raise HTTPException(status_code=409, detail=f"学号已存在：{', '.join(sorted(existing))}")
-    students = [Student(**row.model_dump(exclude={"aliases"}), aliases="") for row in rows]
+    students = [Student(**{**row.model_dump(exclude={"aliases"}), "pinyin": row.pinyin or normalized_pinyin(row.name)}, aliases="") for row in rows]
     db.add_all(students)
     db.commit()
     return [student_out(item) for item in students]
@@ -124,6 +128,8 @@ def update_student(student_id: str, payload: StudentUpdate, db: Session = Depend
         data["aliases"] = "|".join(data["aliases"] or [])
     for key, value in data.items():
         setattr(student, key, value)
+    if "name" in data and "pinyin" not in data:
+        student.pinyin = normalized_pinyin(student.name)
     try:
         db.commit()
     except IntegrityError as exc:
@@ -150,6 +156,35 @@ async def upload_avatar(student_id: str, file: UploadFile = File(...), db: Sessi
     student.avatar_path = await save_avatar(student, file)
     db.commit()
     return student_out(student)
+
+
+@app.post("/api/asr/transcribe", response_model=TranscriptResponse, dependencies=[Depends(require_login)])
+async def transcribe_audio(file: UploadFile = File(...), mock_transcript: str | None = Form(default=None)):
+    content = await file.read(25 * 1024 * 1024 + 1)
+    if len(content) > 25 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="录音不能超过 25MB")
+    provider = get_asr_provider()
+    try:
+        transcript = await provider.transcribe(content, file.content_type or "application/octet-stream", mock_transcript)
+    except ProviderError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return TranscriptResponse(transcript=transcript, provider=provider.name)
+
+
+@app.post("/api/ai/structure", response_model=StructureResponse, dependencies=[Depends(require_login)])
+async def structure_event(payload: StructureRequest, db: Session = Depends(get_db)):
+    students = list(db.scalars(select(Student).where(Student.status == "active")))
+    if payload.preset_student_id and not any(student.id == payload.preset_student_id for student in students):
+        raise HTTPException(status_code=400, detail="预选学生不存在或已停用")
+    resolution = resolve_students(payload.transcript, students, payload.preset_student_id)
+    provider = get_llm_provider()
+    try:
+        draft = await provider.structure(payload.transcript, resolution.candidates, resolution.auto_selected_ids)
+    except ProviderError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    confidence_by_id = {item.student_id: item.confidence for item in resolution.candidates}
+    requires_confirmation = not draft.student_ids or any(confidence_by_id.get(student_id, 0) < 0.9 for student_id in draft.student_ids)
+    return StructureResponse(transcript=payload.transcript, draft=draft, candidates=resolution.candidates, provider=provider.name, requires_student_confirmation=requires_confirmation)
 
 
 @app.get("/api/events", response_model=list[EventOut], dependencies=[Depends(require_login)])
