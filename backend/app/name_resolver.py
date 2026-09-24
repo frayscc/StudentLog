@@ -34,6 +34,7 @@ class NameCorrection:
 
 def canonicalize_student_names(transcript: str, students: list[Student]) -> tuple[str, list[NameCorrection]]:
     """Correct unique homophones, then conservative near-homophones with the same surname."""
+    transcript = re.sub(r"(?<=[\u4e00-\u9fff])[ \t\u3000]+(?=[\u4e00-\u9fff])", "", transcript)
     names_by_pinyin: dict[str, list[str]] = {}
     for student in students:
         key = student.pinyin.replace(" ", "").lower() if student.pinyin else normalized_pinyin(student.name)

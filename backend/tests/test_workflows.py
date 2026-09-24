@@ -15,12 +15,21 @@ from app.database import Base, get_db
 from app.hotwords import hotword_registry
 from app.main import app
 from app.models import AdminUser, Student
-from app.name_resolver import canonicalize_student_names
+from app.name_resolver import canonicalize_student_names, normalized_pinyin
 
 
 def login(client: TestClient) -> None:
     response = client.post("/api/auth/login", json={"username": "admin", "password": os.getenv("ADMIN_PASSWORD", "change-me")})
     assert response.status_code == 200
+
+
+def test_spaced_transcript_name_correction():
+    names = ["陈颢霖", "陈梓恒", "董佳鹄", "黄麒", "李晟睿", "李易恒", "梁晋", "林子昂", "刘一铭", "罗浩玮", "潘卓辰"]
+    students = [Student(id=str(index), student_no=str(index), name=name, pinyin=normalized_pinyin(name), aliases="", status="active") for index, name in enumerate(names)]
+    transcript = "今 天 陈 浩 霖 和 陈 子 恒 找 董 家 湖 玩，遇 到 黄 琦、李 晟 瑞、李 毅 恒、梁 静、林 子 昂、刘 一 鸣、罗 浩 伟 和 潘 卓 辰。"
+    corrected, corrections = canonicalize_student_names(transcript, students)
+    assert corrected == "今天陈颢霖和陈梓恒找董佳鹄玩，遇到黄麒、李晟睿、李易恒、梁晋、林子昂、刘一铭、罗浩玮和潘卓辰。"
+    assert len(corrections) == 9
 
 
 def test_phase1_multi_student_event_and_avatar(tmp_path):
