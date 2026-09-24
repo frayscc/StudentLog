@@ -12,6 +12,7 @@ from sqlalchemy.pool import StaticPool
 from app.auth import hash_password
 from app.config import settings
 from app.database import Base, get_db
+from app.hotwords import hotword_registry
 from app.main import app
 from app.models import AdminUser
 
@@ -46,6 +47,17 @@ def test_phase1_multi_student_event_and_avatar(tmp_path):
             target = client.post("/api/students", json={"student_no": f"C{token}", "name": "杨煜洆", "aliases": []})
             assert first.status_code == second.status_code == target.status_code == 200
             ids = [first.json()["id"], second.json()["id"]]
+            with TestSession() as session:
+                assert "杨煜洆" in hotword_registry.get(session)
+
+            status = client.get("/api/asr/status")
+            assert status.status_code == 200
+            assert status.json()["provider"] == "paraformer"
+            assert status.json()["hotword_count"] >= 13
+            switched = client.put("/api/settings/asr", json={"provider": "sensevoice"})
+            assert switched.status_code == 200
+            assert switched.json()["provider"] == "sensevoice"
+            assert (tmp_path / "config.json").exists()
 
             image = Image.new("RGB", (800, 600), "#d85f2f")
             buffer = io.BytesIO()
@@ -79,14 +91,13 @@ def test_phase1_multi_student_event_and_avatar(tmp_path):
             assert target_candidate["confidence"] >= 0.9
             assert target.json()["id"] in structured.json()["draft"]["student_ids"]
 
-            transcribed = client.post("/api/asr/transcribe", files={"file": ("recording.webm", b"mock-audio", "audio/webm")}, data={"mock_transcript": "测试转写"})
-            assert transcribed.status_code == 200
-            assert transcribed.json()["transcript"] == "测试转写"
-
             assert client.delete(f"/api/events/{event.json()['id']}").status_code == 200
             for student_id in ids:
                 assert client.delete(f"/api/students/{student_id}").status_code == 200
             assert client.delete(f"/api/students/{target.json()['id']}").status_code == 200
+            with TestSession() as session:
+                assert "杨煜洆" not in hotword_registry.get(session)
     finally:
         app.dependency_overrides.clear()
+        hotword_registry.invalidate()
         settings.data_dir = original_data_dir

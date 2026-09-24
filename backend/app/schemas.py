@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -128,3 +129,25 @@ class StructureResponse(BaseModel):
 class TranscriptResponse(BaseModel):
     transcript: str
     provider: str
+    elapsed_ms: int
+    hotword_count: int
+
+
+class ASRSettingsUpdate(BaseModel):
+    provider: Literal["paraformer", "sensevoice"]
+
+
+class ASRSettingsOut(BaseModel):
+    provider: Literal["paraformer", "sensevoice"]
+
+
+class ASRProviderStatus(BaseModel):
+    name: Literal["paraformer", "sensevoice"]
+    installed: bool
+    loaded: bool
+
+
+class ASRStatus(BaseModel):
+    provider: Literal["paraformer", "sensevoice"]
+    hotword_count: int
+    providers: list[ASRProviderStatus]

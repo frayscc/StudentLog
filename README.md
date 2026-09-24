@@ -14,8 +14,10 @@ StudentLog 是供班主任个人使用的本地学生事件档案工具。它使
 - 前端生产资源可由 FastAPI 直接托管；
 - 数据固定保存在 `data/`，不依赖 Docker。
 - 浏览器录音支持开始、暂停、继续、结束和取消；
-- 音频仅在内存中送往 ASR，转写后不落盘长期保存；
-- `ASRProvider` / `LLMProvider` 抽象以及 Mock Provider；
+- 浏览器录音在本机临时转为 16 kHz 单声道 WAV，识别完成立即删除；
+- 本地 `LocalASRProvider` 抽象，Paraformer 默认、SenseVoiceSmall 备选；
+- 模型首次使用时才加载，随后缓存到应用关闭；
+- 活跃学生姓名与常用场景词自动组成 Paraformer 热词；
 - 姓名完全匹配、别名、拼音和 RapidFuzz 候选匹配；
 - 置信度提示与人工学生确认；
 - DeepSeek JSON 结构化和 Pydantic 校验；
@@ -53,14 +55,36 @@ cd ..
 
 启动器会在 `127.0.0.1:8765` 启动应用并打开默认浏览器。此批处理入口是 Phase 1 的开发机可用版本；无需安装 Python/Node.js 的绿色 `StudentLog.exe` 在 Phase 4 交付。
 
-## Phase 2 Provider 配置
+## 本地语音识别
 
-开发和无网络环境默认使用：
+语音识别完全离线，默认使用 CPU 版 Paraformer，不再使用或配置阿里云 ASR。先安装本地语音依赖：
+
+```powershell
+.venv\Scripts\pip install -r backend\requirements-asr.txt
+```
+
+模型文件独立保存在 `models/`，不打入 EXE，也不会在录音时静默下载。默认只下载推荐模型：
+
+```powershell
+.venv\Scripts\python launcher\download_asr_models.py paraformer
+# 可选的对照/回退模型
+.venv\Scripts\python launcher\download_asr_models.py sensevoice
+```
+
+下载过程由 ModelScope 显示进度。也可在联网电脑下载后完整复制 `models/paraformer/` 或 `models/sensevoice/` 到离线工作电脑。系统设置页可以切换模型并查看安装、加载和热词状态。
+
+可选开发配置：
 
 ```text
-ASR_PROVIDER=mock
+ASR_PROVIDER=paraformer
+ASR_CPU_THREADS=6
+ASR_ALLOW_MODEL_DOWNLOAD=false
 LLM_PROVIDER=mock
 ```
+
+`ASR_ALLOW_MODEL_DOWNLOAD` 正式版保持 `false`。录音仅在 `data/temp_audio/` 短暂存在，识别结束即删除，不上传、不长期保存。
+
+## DeepSeek 配置
 
 启用 DeepSeek：
 
@@ -72,17 +96,6 @@ DEEPSEEK_MODEL=deepseek-chat
 ```
 
 后端使用 `/chat/completions` 的 JSON Output，并对结果执行 Pydantic 校验。学生 ID 必须属于本地 Resolver 给出的候选，否则整次结果会被拒绝。照片、附件和原始音频不会发送给 DeepSeek。
-
-阿里云 ASR 有多个鉴权与音频格式不同的产品。当前已实现 `AlibabaASRProvider` 的可配置 HTTP 适配层：
-
-```text
-ASR_PROVIDER=alibaba
-ALI_ASR_ENDPOINT=所选产品的正式接口
-ALI_ASR_APP_KEY=...
-ALI_ASR_TOKEN=...
-```
-
-正式接入前需要根据实际已开通的阿里云语音产品确认 Endpoint、Token 获取方式和 WebM/Opus 支持情况；未配置时会返回明确错误，不会影响学生档案、手工记录和历史浏览。
 
 ## 名单导入格式
 
@@ -109,7 +122,7 @@ npm run build
 
 ## 当前已知问题
 
-- 尚未用真实阿里云账号完成端到端转写，当前自动化测试使用 Mock ASR；
+- 尚未完成 20–50 条真实中文录音的 Paraformer/SenseVoice 对照验收；自动化测试不加载大型模型；
 - 尚未用真实 DeepSeek Key 完成端到端调用，当前自动化测试使用 Mock LLM；
 - 附件、完整全文检索、备份恢复和摘要属于后续阶段；
 - 当前登录密码仅能在首次创建数据库前通过 `.env` 设置，设置页面在后续阶段补充；

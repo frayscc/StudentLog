@@ -1,7 +1,7 @@
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, File, Form, HTTPException, Response, UploadFile
+from fastapi import Depends, FastAPI, File, HTTPException, Response, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import or_, select
@@ -9,12 +9,16 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from .auth import create_session, hash_password, require_login, verify_password
+from .asr import get_asr_provider
+from .audio import browser_audio_to_wav
 from .config import ensure_data_dirs, settings
 from .database import Base, engine, get_db
+from .hotwords import hotword_registry
+from .local_config import get_asr_provider_name, save_asr_provider_name
 from .models import AdminUser, Event, Student
 from .name_resolver import normalized_pinyin, resolve_students
-from .providers import ProviderError, get_asr_provider, get_llm_provider
-from .schemas import EventCreate, EventOut, EventUpdate, LoginRequest, StructureRequest, StructureResponse, StudentCreate, StudentOut, StudentUpdate, TranscriptResponse
+from .providers import ProviderError, get_llm_provider
+from .schemas import ASRSettingsOut, ASRSettingsUpdate, ASRStatus, EventCreate, EventOut, EventUpdate, LoginRequest, StructureRequest, StructureResponse, StudentCreate, StudentOut, StudentUpdate, TranscriptResponse
 from .services import apply_event, event_out, event_query, parse_student_import, save_avatar, student_out
 
 
@@ -87,6 +91,7 @@ def create_student(payload: StudentCreate, db: Session = Depends(get_db)):
         db.rollback()
         raise HTTPException(status_code=409, detail="学号已存在") from exc
     db.refresh(student)
+    hotword_registry.invalidate()
     return student_out(student)
 
 
@@ -107,6 +112,7 @@ async def import_students(file: UploadFile = File(...), db: Session = Depends(ge
     students = [Student(**{**row.model_dump(exclude={"aliases"}), "pinyin": row.pinyin or normalized_pinyin(row.name)}, aliases="") for row in rows]
     db.add_all(students)
     db.commit()
+    hotword_registry.invalidate()
     return [student_out(item) for item in students]
 
 
@@ -135,6 +141,7 @@ def update_student(student_id: str, payload: StudentUpdate, db: Session = Depend
     except IntegrityError as exc:
         db.rollback()
         raise HTTPException(status_code=409, detail="学号已存在") from exc
+    hotword_registry.invalidate()
     return student_out(student)
 
 
@@ -145,6 +152,7 @@ def deactivate_student(student_id: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="学生不存在")
     student.status = "inactive"
     db.commit()
+    hotword_registry.invalidate()
     return {"ok": True}
 
 
@@ -159,16 +167,45 @@ async def upload_avatar(student_id: str, file: UploadFile = File(...), db: Sessi
 
 
 @app.post("/api/asr/transcribe", response_model=TranscriptResponse, dependencies=[Depends(require_login)])
-async def transcribe_audio(file: UploadFile = File(...), mock_transcript: str | None = Form(default=None)):
+async def transcribe_audio(file: UploadFile = File(...), db: Session = Depends(get_db)):
     content = await file.read(25 * 1024 * 1024 + 1)
     if len(content) > 25 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="录音不能超过 25MB")
-    provider = get_asr_provider()
+    hotwords = hotword_registry.get(db)
+    provider_name = get_asr_provider_name()
+    wav_path = None
     try:
-        transcript = await provider.transcribe(content, file.content_type or "application/octet-stream", mock_transcript)
+        wav_path = browser_audio_to_wav(content)
+        provider = get_asr_provider(provider_name)
+        result = await provider.transcribe(wav_path, hotwords=hotwords, language="zh")
     except ProviderError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
-    return TranscriptResponse(transcript=transcript, provider=provider.name)
+    finally:
+        if wav_path is not None:
+            wav_path.unlink(missing_ok=True)
+    return TranscriptResponse(transcript=result.transcript, provider=provider.name, elapsed_ms=result.elapsed_ms, hotword_count=len(hotwords))
+
+
+@app.get("/api/asr/status", response_model=ASRStatus, dependencies=[Depends(require_login)])
+def asr_status(db: Session = Depends(get_db)):
+    provider_name = get_asr_provider_name()
+    providers = [get_asr_provider(name) for name in ("paraformer", "sensevoice")]
+    return ASRStatus(
+        provider=provider_name,
+        hotword_count=len(hotword_registry.get(db)),
+        providers=[{"name": item.name, "installed": item.installed, "loaded": item.loaded} for item in providers],
+    )
+
+
+@app.get("/api/settings/asr", response_model=ASRSettingsOut, dependencies=[Depends(require_login)])
+def get_asr_settings():
+    return ASRSettingsOut(provider=get_asr_provider_name())
+
+
+@app.put("/api/settings/asr", response_model=ASRSettingsOut, dependencies=[Depends(require_login)])
+def update_asr_settings(payload: ASRSettingsUpdate):
+    save_asr_provider_name(payload.provider)
+    return ASRSettingsOut(provider=payload.provider)
 
 
 @app.post("/api/ai/structure", response_model=StructureResponse, dependencies=[Depends(require_login)])

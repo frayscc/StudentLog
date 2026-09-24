@@ -4,7 +4,13 @@ StudentLog 是一个“具有 Web UI 的本地桌面工具”，不是需要持�
 
 ## 运行模型
 
-正式版面向 Windows 单教师、单电脑使用：双击启动器后，程序只监听 `127.0.0.1`，启动 FastAPI、托管已构建的 React 静态页面，并自动打开默认浏览器。关闭启动器即停止服务。应用主体离线可用；只有阿里云 ASR、DeepSeek 整理和阶段性摘要需要网络。
+正式版面向 Windows 单教师、单电脑使用：双击启动器后，程序只监听 `127.0.0.1`，启动 FastAPI、托管已构建的 React 静态页面，并自动打开默认浏览器。关闭启动器即停止服务。应用主体与语音识别均可离线使用；只有 DeepSeek 整理和阶段性摘要需要网络。
+
+## 本地 ASR
+
+语音识别采用 `LocalASRProvider` 统一接口，Paraformer 为默认方案，SenseVoiceSmall 为备选和对照方案。浏览器录音由后端在本机转为 16 kHz 单声道 WAV，模型在第一次转写时懒加载并缓存到进程结束。Paraformer 热词由活跃学生姓名和少量场景词生成，学生名单变化后自动失效重建；本地姓名解析器仍负责最终关联确认。
+
+模型固定放在 `models/paraformer/` 和 `models/sensevoice/`，与程序和 `data/` 分离，不打入 EXE。正式版禁止运行时静默联网下载。原始录音只在 `data/temp_audio/` 暂存并在请求结束后删除。
 
 Node.js、npm 与 Vite 仅用于开发和构建。正式发布采用绿色便携目录，并在 Phase 4 使用 PyInstaller 打包 Python 运行时与启动器。用户无需安装 Python、Node.js 或 Docker。
 

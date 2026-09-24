@@ -13,6 +13,12 @@ data/app.db-*
 data/avatars/*
 data/attachments/*
 data/backups/*
+data/temp_audio/*
+models/paraformer/*
+models/sensevoice/*
 !data/avatars/.gitkeep
 !data/attachments/.gitkeep
 !data/backups/.gitkeep
+!data/temp_audio/.gitkeep
+!models/paraformer/.gitkeep
+!models/sensevoice/.gitkeep

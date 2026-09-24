@@ -13,43 +13,6 @@ class ProviderError(RuntimeError):
     pass
 
 
-class ASRProvider(ABC):
-    name = "unknown"
-
-    @abstractmethod
-    async def transcribe(self, audio: bytes, content_type: str, hint: str | None = None) -> str: ...
-
-
-class MockASRProvider(ASRProvider):
-    name = "mock"
-
-    async def transcribe(self, audio: bytes, content_type: str, hint: str | None = None) -> str:
-        if not audio:
-            raise ProviderError("录音内容为空")
-        return hint or "今天中午一点四十五杨育成在教室午休的时候讲话，我提醒了一次以后他停止了讲话。"
-
-
-class AlibabaASRProvider(ASRProvider):
-    name = "alibaba"
-
-    async def transcribe(self, audio: bytes, content_type: str, hint: str | None = None) -> str:
-        if not settings.ali_asr_endpoint or not settings.ali_asr_app_key or not settings.ali_asr_token:
-            raise ProviderError("阿里云 ASR 尚未配置具体产品的 Endpoint、AppKey 和 Token")
-        headers = {"X-NLS-Token": settings.ali_asr_token, "Content-Type": content_type or "application/octet-stream"}
-        params = {"appkey": settings.ali_asr_app_key}
-        try:
-            async with httpx.AsyncClient(timeout=60) as client:
-                response = await client.post(settings.ali_asr_endpoint, params=params, headers=headers, content=audio)
-                response.raise_for_status()
-                payload = response.json()
-        except (httpx.HTTPError, ValueError) as exc:
-            raise ProviderError(f"阿里云语音转写失败：{exc}") from exc
-        transcript = payload.get("result") or payload.get("text")
-        if not transcript:
-            raise ProviderError(payload.get("message") or "阿里云未返回转写文本")
-        return str(transcript)
-
-
 class LLMProvider(ABC):
     name = "unknown"
 
@@ -102,10 +65,6 @@ class DeepSeekProvider(LLMProvider):
         if any(student_id not in allowed_ids for student_id in draft.student_ids):
             raise ProviderError("DeepSeek 返回了候选名单之外的学生，已拒绝该结果")
         return draft
-
-
-def get_asr_provider() -> ASRProvider:
-    return AlibabaASRProvider() if settings.asr_provider.lower() == "alibaba" else MockASRProvider()
 
 
 def get_llm_provider() -> LLMProvider:
