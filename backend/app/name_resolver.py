@@ -124,5 +124,7 @@ def resolve_students(transcript: str, students: list[Student], preset_student_id
             candidates.append(NameCandidate(student_id=student.id, student_no=student.student_no, name=student.name, confidence=round(score, 3), reason=reason))
 
     candidates.sort(key=lambda item: item.confidence, reverse=True)
-    strong = [candidate.student_id for candidate in candidates if candidate.confidence >= 0.9]
-    return Resolution(candidates[:8], strong)
+    strong_candidates = [candidate for candidate in candidates if candidate.confidence >= 0.9]
+    weaker_candidates = [candidate for candidate in candidates if candidate.confidence < 0.9][:8]
+    strong = [candidate.student_id for candidate in strong_candidates]
+    return Resolution([*strong_candidates, *weaker_candidates], strong)

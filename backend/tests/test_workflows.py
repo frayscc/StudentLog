@@ -15,7 +15,7 @@ from app.database import Base, get_db
 from app.hotwords import hotword_registry
 from app.main import app
 from app.models import AdminUser, Student
-from app.name_resolver import canonicalize_student_names, normalized_pinyin
+from app.name_resolver import canonicalize_student_names, normalized_pinyin, resolve_students
 
 
 def login(client: TestClient) -> None:
@@ -30,6 +30,10 @@ def test_spaced_transcript_name_correction():
     corrected, corrections = canonicalize_student_names(transcript, students)
     assert corrected == "今天陈颢霖和陈梓恒找董佳鹄玩，遇到黄麒、李晟睿、李易恒、梁晋、林子昂、刘一铭、罗浩玮和潘卓辰。"
     assert len(corrections) == 9
+    resolution = resolve_students(corrected, students)
+    assert len(resolution.candidates) == 11
+    assert len(resolution.auto_selected_ids) == 11
+    assert all(candidate.confidence == 1 for candidate in resolution.candidates)
 
 
 def test_phase1_multi_student_event_and_avatar(tmp_path):
