@@ -33,7 +33,7 @@ class NameCorrection:
 
 
 def canonicalize_student_names(transcript: str, students: list[Student]) -> tuple[str, list[NameCorrection]]:
-    """Correct unique, exact-homophone name spans without guessing ambiguous names."""
+    """Correct unique homophones, then conservative near-homophones with the same surname."""
     names_by_pinyin: dict[str, list[str]] = {}
     for student in students:
         key = student.pinyin.replace(" ", "").lower() if student.pinyin else normalized_pinyin(student.name)
@@ -57,6 +57,36 @@ def canonicalize_student_names(transcript: str, students: list[Student]) -> tupl
                 if positions & occupied:
                     continue
                 replacements.append((absolute_start, absolute_start + size, original, candidates[0]))
+                occupied.update(positions)
+
+    # Some recognitions preserve the surname but confuse one given-name syllable
+    # (for example 方林/方宁). Correct only a clearly leading roster candidate.
+    for match in re.finditer(r"[\u4e00-\u9fff]+", transcript):
+        run = match.group()
+        for start in range(len(run)):
+            for size in name_lengths:
+                if start + size > len(run):
+                    continue
+                original = run[start:start + size]
+                absolute_start = match.start() + start
+                positions = set(range(absolute_start, absolute_start + size))
+                if positions & occupied:
+                    continue
+                ranked = sorted(
+                    (
+                        ratio(normalized_pinyin(original), student.pinyin or normalized_pinyin(student.name)) / 100,
+                        student.name,
+                    )
+                    for student in students
+                    if len(student.name) == size and student.name != original and student.name[0] == original[0]
+                )
+                if not ranked:
+                    continue
+                best_score, best_name = ranked[-1]
+                second_score = ranked[-2][0] if len(ranked) > 1 else 0
+                if best_score < 0.8 or best_score - second_score < 0.12:
+                    continue
+                replacements.append((absolute_start, absolute_start + size, original, best_name))
                 occupied.update(positions)
 
     corrected = transcript

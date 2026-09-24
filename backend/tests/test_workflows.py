@@ -46,19 +46,20 @@ def test_phase1_multi_student_event_and_avatar(tmp_path):
             first = client.post("/api/students", json={"student_no": f"A{token}", "name": "测试甲", "aliases": []})
             second = client.post("/api/students", json={"student_no": f"B{token}", "name": "测试乙", "aliases": []})
             target = client.post("/api/students", json={"student_no": f"C{token}", "name": "杨煜洆", "aliases": []})
-            assert first.status_code == second.status_code == target.status_code == 200
+            near_homophone = client.post("/api/students", json={"student_no": f"D{token}", "name": "方宁", "aliases": []})
+            assert first.status_code == second.status_code == target.status_code == near_homophone.status_code == 200
             ids = [first.json()["id"], second.json()["id"]]
             with TestSession() as session:
                 assert "杨煜洆" in hotword_registry.get(session)
                 active = list(session.query(Student).all())
-                corrected, corrections = canonicalize_student_names("今天杨育成在午休时讲话。", active)
-                assert corrected == "今天杨煜洆在午休时讲话。"
-                assert [(item.original, item.corrected) for item in corrections] == [("杨育成", "杨煜洆")]
+                corrected, corrections = canonicalize_student_names("今天杨育成和方林在午休时讲话。", active)
+                assert corrected == "今天杨煜洆和方宁在午休时讲话。"
+                assert [(item.original, item.corrected) for item in corrections] == [("杨育成", "杨煜洆"), ("方林", "方宁")]
 
             status = client.get("/api/asr/status")
             assert status.status_code == 200
             assert status.json()["provider"] == "paraformer"
-            assert status.json()["hotword_count"] >= 13
+            assert status.json()["hotword_count"] >= 14
             switched = client.put("/api/settings/asr", json={"provider": "sensevoice"})
             assert switched.status_code == 200
             assert switched.json()["provider"] == "sensevoice"
@@ -98,7 +99,7 @@ def test_phase1_multi_student_event_and_avatar(tmp_path):
 
             cleared = client.delete("/api/students/clear")
             assert cleared.status_code == 200
-            assert cleared.json() == {"ok": True, "deleted": 1, "archived": 2}
+            assert cleared.json() == {"ok": True, "deleted": 2, "archived": 2}
             assert client.get("/api/students").json() == []
             with TestSession() as session:
                 assert "杨煜洆" not in hotword_registry.get(session)

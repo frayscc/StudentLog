@@ -18,7 +18,7 @@ StudentLog 是供班主任个人使用的本地学生事件档案工具。它使
 - 本地 `LocalASRProvider` 抽象，Paraformer 默认、SenseVoiceSmall 备选；
 - 模型首次使用时才加载，随后缓存到应用关闭；
 - 活跃学生姓名与常用场景词自动组成 Paraformer 热词；
-- ASR 输出仅在“拼音完全一致且名单候选唯一”时规范为正式姓名，并提示教师核对；
+- ASR 输出优先按唯一同音姓名规范；对姓氏相同的近音姓名，仅在最佳候选明显领先时修正，并提示教师核对；
 - 姓名完全匹配、别名、拼音和 RapidFuzz 候选匹配；
 - 置信度提示与人工学生确认；
 - DeepSeek JSON 结构化和 Pydantic 校验；
