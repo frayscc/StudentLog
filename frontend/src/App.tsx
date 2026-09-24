@@ -1,0 +1,115 @@
+import { FormEvent, ReactNode, useEffect, useMemo, useState } from 'react'
+import { BookOpen, CalendarDays, ChevronLeft, Clock3, FileText, Home, ImagePlus, LogOut, Menu, Plus, Search, Settings, UserRound, Users, X } from 'lucide-react'
+import { Link, NavLink, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom'
+import { api, ApiError } from './api'
+import type { EventItem, Student } from './types'
+
+const categories = ['课堂表现', '作业', '午休纪律', '表扬', '师生沟通', '家校沟通', '其他']
+
+function cn(...items: (string | false | undefined)[]) { return items.filter(Boolean).join(' ') }
+function localInputDate(date = new Date()) { const shifted = new Date(date.getTime() - date.getTimezoneOffset() * 60000); return shifted.toISOString().slice(0, 16) }
+function formatDate(value: string, withTime = true) { return new Intl.DateTimeFormat('zh-CN', { month: 'long', day: 'numeric', ...(withTime ? { hour: '2-digit', minute: '2-digit', hour12: false } : {}) }).format(new Date(value)) }
+
+function Avatar({ student, size = 'normal' }: { student: Pick<Student, 'name' | 'avatar_url'>; size?: 'small' | 'normal' | 'large' }) {
+  return student.avatar_url ? <img className={`avatar avatar-${size}`} src={student.avatar_url} alt={`${student.name}的照片`} /> : <div className={`avatar avatar-${size} avatar-fallback`}>{student.name.slice(-2)}</div>
+}
+
+function Login({ onLogin }: { onLogin: () => void }) {
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); setBusy(true); setError('')
+    const data = new FormData(event.currentTarget)
+    try { await api('/auth/login', { method: 'POST', body: JSON.stringify({ username: data.get('username'), password: data.get('password') }) }); onLogin() }
+    catch (err) { setError(err instanceof Error ? err.message : '登录失败') }
+    finally { setBusy(false) }
+  }
+  return <main className="login-shell"><section className="login-card">
+    <div className="brand-mark"><BookOpen size={27} /><span>StudentLog</span></div>
+    <p className="eyebrow">本地学生档案</p><h1>把每天值得记下的事，妥帖地留在这里。</h1>
+    <form onSubmit={submit}><label>用户名<input name="username" defaultValue="admin" autoComplete="username" required /></label><label>密码<input name="password" type="password" autoComplete="current-password" required autoFocus /></label>{error && <p className="form-error">{error}</p>}<button className="primary wide" disabled={busy}>{busy ? '正在登录…' : '进入档案'}</button></form>
+    <p className="privacy-note">数据保存在这台电脑上，不会自动上传云端。</p>
+  </section></main>
+}
+
+function Shell({ children, logout }: { children: ReactNode; logout: () => void }) {
+  const [open, setOpen] = useState(false); const location = useLocation(); useEffect(() => setOpen(false), [location.pathname])
+  const nav = <><div className="side-brand"><div className="brand-icon"><BookOpen size={22} /></div><span>StudentLog</span></div><nav><NavLink to="/"><Home />首页</NavLink><NavLink to="/students"><Users />学生档案</NavLink><NavLink to="/events"><FileText />全部记录</NavLink></nav><div className="side-bottom"><button className="nav-button" disabled title="将在后续阶段开放"><Settings />系统设置</button><button className="nav-button" onClick={logout}><LogOut />退出登录</button><div className="local-badge"><span />本机数据</div></div></>
+  return <div className="app-shell"><aside className={cn('sidebar', open && 'open')}>{nav}</aside>{open && <button className="scrim" aria-label="关闭菜单" onClick={() => setOpen(false)} />}<header className="mobile-head"><button className="icon-button" onClick={() => setOpen(true)}><Menu /></button><strong>StudentLog</strong><span /></header><main className="content">{children}</main></div>
+}
+
+function PageHeader({ eyebrow, title, action }: { eyebrow?: string; title: string; action?: ReactNode }) { return <header className="page-header"><div>{eyebrow && <p className="eyebrow">{eyebrow}</p>}<h1>{title}</h1></div>{action}</header> }
+
+function HomePage() {
+  const [events, setEvents] = useState<EventItem[]>([]); const [students, setStudents] = useState<Student[]>([])
+  useEffect(() => { void Promise.all([api<EventItem[]>('/events'), api<Student[]>('/students?recent=true')]).then(([e, s]) => { setEvents(e); setStudents(s) }) }, [])
+  const today = new Intl.DateTimeFormat('zh-CN', { month: 'long', day: 'numeric', weekday: 'long' }).format(new Date())
+  return <><PageHeader eyebrow={today} title="今天，记录什么？" />
+    <section className="quick-grid"><Link to="/events/new" className="quick-card quick-primary"><span className="quick-icon"><Plus /></span><div><strong>文字记录</strong><small>快速写下一件事</small></div></Link><button className="quick-card disabled" disabled><span className="quick-icon"><span className="mic">●</span></span><div><strong>语音记录</strong><small>将在 Phase 2 开放</small></div></button><Link to="/students" className="quick-card"><span className="quick-icon"><Users /></span><div><strong>学生档案</strong><small>按照片或姓名查找</small></div></Link></section>
+    <section className="section-block"><div className="section-title"><h2>最近记录</h2><Link to="/events">查看全部</Link></div>{events.length ? <div className="event-list">{events.slice(0, 5).map(event => <EventRow key={event.id} event={event} />)}</div> : <Empty icon={<FileText />} title="还没有记录" detail="第一条记录可以很简单，比如“今天物理课主动回答问题”。" action={<Link className="primary" to="/events/new">写第一条</Link>} />}</section>
+    {students.some(s => s.last_event_at) && <section className="section-block"><div className="section-title"><h2>最近记录的学生</h2></div><div className="recent-students">{students.filter(s => s.last_event_at).slice(0, 6).map(student => <Link to={`/students/${student.id}`} key={student.id}><Avatar student={student} /><span><strong>{student.name}</strong><small>{student.event_count} 条记录</small></span></Link>)}</div></section>}
+  </>
+}
+
+function StudentsPage() {
+  const [students, setStudents] = useState<Student[]>([]); const [q, setQ] = useState(''); const [showForm, setShowForm] = useState(false); const [error, setError] = useState('')
+  const load = () => api<Student[]>(`/students?q=${encodeURIComponent(q)}`).then(setStudents).catch(e => setError(e.message)); useEffect(() => { void load() }, [q])
+  async function add(event: FormEvent<HTMLFormElement>) { event.preventDefault(); const form = event.currentTarget; const data = new FormData(form); try { await api('/students', { method: 'POST', body: JSON.stringify({ student_no: data.get('student_no'), name: data.get('name'), aliases: [] }) }); form.reset(); setShowForm(false); await load() } catch (e) { setError((e as Error).message) } }
+  async function importList(file?: File) { if (!file) return; const body = new FormData(); body.append('file', file); try { await api('/students/import', { method: 'POST', body }); await load() } catch (e) { setError((e as Error).message) } }
+  return <><PageHeader eyebrow={`${students.length} 名在册学生`} title="学生档案" action={<button className="primary" onClick={() => setShowForm(true)}><Plus />新增学生</button>} />
+    <div className="toolbar"><label className="search"><Search /><input value={q} onChange={e => setQ(e.target.value)} placeholder="搜索姓名或学号" /></label><label className="secondary file-button">导入名单<input type="file" accept=".txt,.csv" onChange={e => void importList(e.target.files?.[0])} /></label></div>{error && <p className="form-error">{error}</p>}
+    {students.length ? <div className="student-grid">{students.map(student => <Link className="student-card" to={`/students/${student.id}`} key={student.id}><div className="photo-wrap"><Avatar student={student} size="large" /></div><div><h3>{student.name}</h3><p>学号 {student.student_no}</p><span>{student.event_count} 条记录</span></div></Link>)}</div> : <Empty icon={<Users />} title={q ? '没有找到匹配的学生' : '还没有学生'} detail={q ? '试试姓名中的其他字，或输入学号。' : '逐个新增，或导入 TXT / CSV 名单。'} />}
+    {showForm && <Modal title="新增学生" onClose={() => setShowForm(false)}><form onSubmit={add} className="form-grid"><label>学号<input name="student_no" required autoFocus /></label><label>姓名<input name="name" required /></label><div className="form-actions"><button type="button" className="text-button" onClick={() => setShowForm(false)}>取消</button><button className="primary">保存学生</button></div></form></Modal>}
+  </>
+}
+
+function StudentPage() {
+  const { id } = useParams(); const nav = useNavigate(); const [student, setStudent] = useState<Student>(); const [events, setEvents] = useState<EventItem[]>([]); const [edit, setEdit] = useState(false); const [error, setError] = useState('')
+  const load = () => Promise.all([api<Student>(`/students/${id}`), api<EventItem[]>(`/events?student_id=${id}`)]).then(([s, e]) => { setStudent(s); setEvents(e) }).catch(e => setError(e.message)); useEffect(() => { void load() }, [id])
+  async function avatar(file?: File) { if (!file) return; const body = new FormData(); body.append('file', file); try { await api(`/students/${id}/avatar`, { method: 'POST', body }); await load() } catch (e) { setError((e as Error).message) } }
+  async function update(event: FormEvent<HTMLFormElement>) { event.preventDefault(); const d = new FormData(event.currentTarget); try { await api(`/students/${id}`, { method: 'PATCH', body: JSON.stringify({ student_no: d.get('student_no'), name: d.get('name'), aliases: String(d.get('aliases') || '').split(/[，,]/).map(x => x.trim()).filter(Boolean) }) }); setEdit(false); await load() } catch (e) { setError((e as Error).message) } }
+  async function deactivate() { if (!confirm('停用后，学生不会出现在日常列表中，已有记录会保留。继续吗？')) return; await api(`/students/${id}`, { method: 'DELETE' }); nav('/students') }
+  if (!student) return <p>{error || '正在读取档案…'}</p>
+  const counts = categories.map(name => ({ name, count: events.filter(e => e.category === name).length })).filter(i => i.count)
+  return <><Link to="/students" className="back"><ChevronLeft />返回学生列表</Link><section className="profile-head"><label className="avatar-upload"><Avatar student={student} size="large" /><span><ImagePlus />更换照片</span><input type="file" accept="image/jpeg,image/png,image/webp" onChange={e => void avatar(e.target.files?.[0])} /></label><div className="profile-main"><p className="eyebrow">学生档案</p><h1>{student.name}</h1><p>学号 {student.student_no}</p><div className="counts"><span><strong>{events.length}</strong>全部记录</span>{counts.slice(0, 4).map(item => <span key={item.name}><strong>{item.count}</strong>{item.name}</span>)}</div></div><div className="profile-actions"><Link className="primary" to={`/events/new?student=${student.id}`}><Plus />新增记录</Link><button className="secondary" onClick={() => setEdit(true)}>编辑资料</button></div></section>{error && <p className="form-error">{error}</p>}
+    <section className="section-block"><div className="section-title"><h2>事件时间线</h2></div>{events.length ? <div className="timeline">{events.map(event => <EventCard event={event} key={event.id} />)}</div> : <Empty icon={<CalendarDays />} title="时间线还是空的" detail="从一条客观、简短的事件开始记录。" />}</section>
+    {edit && <Modal title="编辑学生资料" onClose={() => setEdit(false)}><form onSubmit={update} className="form-grid"><label>学号<input name="student_no" defaultValue={student.student_no} required /></label><label>姓名<input name="name" defaultValue={student.name} required /></label><label className="span-2">姓名别名（逗号分隔）<input name="aliases" defaultValue={student.aliases.join('，')} /></label><div className="danger-zone"><button type="button" className="danger-link" onClick={() => void deactivate()}>停用学生</button></div><div className="form-actions"><button type="button" className="text-button" onClick={() => setEdit(false)}>取消</button><button className="primary">保存修改</button></div></form></Modal>}
+  </>
+}
+
+function EventsPage() {
+  const [events, setEvents] = useState<EventItem[]>([]); const [q, setQ] = useState(''); const [category, setCategory] = useState('')
+  useEffect(() => { const p = new URLSearchParams({ q }); if (category) p.set('category', category); void api<EventItem[]>(`/events?${p}`).then(setEvents) }, [q, category])
+  return <><PageHeader eyebrow={`${events.length} 条记录`} title="全部记录" action={<Link className="primary" to="/events/new"><Plus />新增记录</Link>} /><div className="toolbar"><label className="search"><Search /><input value={q} onChange={e => setQ(e.target.value)} placeholder="搜索事件内容" /></label><select value={category} onChange={e => setCategory(e.target.value)}><option value="">全部分类</option>{categories.map(c => <option key={c}>{c}</option>)}</select></div>{events.length ? <div className="event-list roomy">{events.map(event => <EventCard event={event} key={event.id} />)}</div> : <Empty icon={<FileText />} title="没有符合条件的记录" detail="调整筛选条件，或新增一条记录。" />}</>
+}
+
+function NewEventPage() {
+  const params = new URLSearchParams(useLocation().search); const preset = params.get('student'); const nav = useNavigate(); const [students, setStudents] = useState<Student[]>([]); const [selected, setSelected] = useState<string[]>(preset ? [preset] : []); const [error, setError] = useState(''); const [busy, setBusy] = useState(false)
+  useEffect(() => { void api<Student[]>('/students').then(setStudents) }, [])
+  function toggle(id: string) { setSelected(current => current.includes(id) ? current.filter(x => x !== id) : [...current, id]) }
+  async function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); if (!selected.length) { setError('请至少选择一名学生'); return } const d = new FormData(event.currentTarget); setBusy(true); setError(''); try { await api('/events', { method: 'POST', body: JSON.stringify({ student_ids: selected, occurred_at: d.get('occurred_at'), location: d.get('location') || null, category: d.get('category'), event_description: d.get('event_description'), student_response: d.get('student_response') || null, teacher_action: d.get('teacher_action') || null, follow_up: d.get('follow_up') || null, tags: String(d.get('tags') || '').split(/[，,]/).map(x => x.trim()).filter(Boolean), record_method: 'text' }) }); nav(preset ? `/students/${preset}` : '/events') } catch (e) { setError((e as Error).message) } finally { setBusy(false) } }
+  return <><Link to={preset ? `/students/${preset}` : '/events'} className="back"><ChevronLeft />取消并返回</Link><PageHeader eyebrow="手工文字记录" title="记下一件事" /><form className="event-form" onSubmit={submit}><fieldset><legend>关联学生 <span>可选择多名</span></legend><div className="student-picker">{students.map(s => <button type="button" className={cn(selected.includes(s.id) && 'selected')} key={s.id} onClick={() => toggle(s.id)}><Avatar student={s} size="small" /><span>{s.name}<small>{s.student_no}</small></span></button>)}</div></fieldset><div className="form-grid"><label>发生时间<input name="occurred_at" type="datetime-local" defaultValue={localInputDate()} required /></label><label>分类<select name="category" defaultValue="其他">{categories.map(c => <option key={c}>{c}</option>)}</select></label><label className="span-2">事件经过<textarea name="event_description" rows={4} placeholder="客观记录发生了什么…" required autoFocus /></label><label>地点<input name="location" placeholder="例如：教室" /></label><label>标签<input name="tags" placeholder="午休，谈话（逗号分隔）" /></label><label className="span-2">学生回应<textarea name="student_response" rows={2} /></label><label className="span-2">教师处理<textarea name="teacher_action" rows={2} /></label><label className="span-2">后续措施<textarea name="follow_up" rows={2} /></label></div>{error && <p className="form-error">{error}</p>}<div className="sticky-actions"><button type="button" className="text-button" onClick={() => nav(-1)}>取消</button><button className="primary" disabled={busy}>{busy ? '正在保存…' : '保存记录'}</button></div></form></>
+}
+
+function EditEventPage() {
+  const { eventId } = useParams(); const nav = useNavigate(); const [record, setRecord] = useState<EventItem>(); const [students, setStudents] = useState<Student[]>([]); const [selected, setSelected] = useState<string[]>([]); const [error, setError] = useState(''); const [busy, setBusy] = useState(false)
+  useEffect(() => { void Promise.all([api<EventItem>(`/events/${eventId}`), api<Student[]>('/students')]).then(([item, list]) => { setRecord(item); setStudents(list); setSelected(item.students.map(s => s.id)) }).catch(e => setError(e.message)) }, [eventId])
+  function toggle(id: string) { setSelected(current => current.includes(id) ? current.filter(x => x !== id) : [...current, id]) }
+  async function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); if (!selected.length) { setError('请至少选择一名学生'); return } const d = new FormData(event.currentTarget); setBusy(true); try { await api(`/events/${eventId}`, { method: 'PUT', body: JSON.stringify({ student_ids: selected, occurred_at: d.get('occurred_at'), location: d.get('location') || null, category: d.get('category'), event_description: d.get('event_description'), student_response: d.get('student_response') || null, teacher_action: d.get('teacher_action') || null, follow_up: d.get('follow_up') || null, raw_transcript: record?.raw_transcript || null, tags: String(d.get('tags') || '').split(/[，,]/).map(x => x.trim()).filter(Boolean), record_method: record?.record_method || 'text' }) }); nav(-1) } catch (e) { setError((e as Error).message); setBusy(false) } }
+  if (!record) return <p>{error || '正在读取记录…'}</p>
+  return <><button className="back link-button" onClick={() => nav(-1)}><ChevronLeft />取消并返回</button><PageHeader eyebrow="修改已有记录" title="编辑事件" /><form className="event-form" onSubmit={submit}><fieldset><legend>关联学生 <span>可选择多名</span></legend><div className="student-picker">{students.map(s => <button type="button" className={cn(selected.includes(s.id) && 'selected')} key={s.id} onClick={() => toggle(s.id)}><Avatar student={s} size="small" /><span>{s.name}<small>{s.student_no}</small></span></button>)}</div></fieldset><div className="form-grid"><label>发生时间<input name="occurred_at" type="datetime-local" defaultValue={localInputDate(new Date(record.occurred_at))} required /></label><label>分类<select name="category" defaultValue={record.category}>{categories.map(c => <option key={c}>{c}</option>)}</select></label><label className="span-2">事件经过<textarea name="event_description" rows={4} defaultValue={record.event_description} required /></label><label>地点<input name="location" defaultValue={record.location || ''} /></label><label>标签<input name="tags" defaultValue={record.tags.join('，')} /></label><label className="span-2">学生回应<textarea name="student_response" rows={2} defaultValue={record.student_response || ''} /></label><label className="span-2">教师处理<textarea name="teacher_action" rows={2} defaultValue={record.teacher_action || ''} /></label><label className="span-2">后续措施<textarea name="follow_up" rows={2} defaultValue={record.follow_up || ''} /></label></div>{error && <p className="form-error">{error}</p>}<div className="sticky-actions"><button type="button" className="text-button" onClick={() => nav(-1)}>取消</button><button className="primary" disabled={busy}>{busy ? '正在保存…' : '保存修改'}</button></div></form></>
+}
+
+function EventRow({ event }: { event: EventItem }) { return <article className="event-row"><time><strong>{new Date(event.occurred_at).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false })}</strong><small>{formatDate(event.occurred_at, false)}</small></time><div><p>{event.students.map(s => s.name).join('、')}<span className="category">{event.category}</span></p><small>{event.event_description}</small></div></article> }
+function EventCard({ event }: { event: EventItem }) { const [open, setOpen] = useState(false); async function remove() { if (!confirm('删除后无法恢复，确定删除这条记录吗？')) return; await api(`/events/${event.id}`, { method: 'DELETE' }); window.location.reload() } return <article className="event-card" onClick={() => setOpen(!open)}><div className="event-meta"><time><Clock3 />{formatDate(event.occurred_at)}</time>{event.location && <span>{event.location}</span>}<span className="category">{event.category}</span></div><div className="event-students">{event.students.map(s => <Link onClick={e => e.stopPropagation()} to={`/students/${s.id}`} key={s.id}>{s.name}</Link>)}</div><p className="event-description">{event.event_description}</p>{event.tags.length > 0 && <div className="tags">{event.tags.map(tag => <span key={tag}>#{tag}</span>)}</div>}{open && <div className="event-details">{event.student_response && <p><strong>学生回应</strong>{event.student_response}</p>}{event.teacher_action && <p><strong>教师处理</strong>{event.teacher_action}</p>}{event.follow_up && <p><strong>后续措施</strong>{event.follow_up}</p>}<div className="record-actions"><Link to={`/events/${event.id}/edit`} onClick={e => e.stopPropagation()}>编辑记录</Link><button onClick={e => { e.stopPropagation(); void remove() }}>删除</button></div></div>}</article> }
+function Empty({ icon, title, detail, action }: { icon: ReactNode; title: string; detail: string; action?: ReactNode }) { return <div className="empty"><span>{icon}</span><h3>{title}</h3><p>{detail}</p>{action}</div> }
+function Modal({ title, children, onClose }: { title: string; children: ReactNode; onClose: () => void }) { return <div className="modal-backdrop" onMouseDown={onClose}><section className="modal" onMouseDown={e => e.stopPropagation()} role="dialog" aria-modal="true"><header><h2>{title}</h2><button className="icon-button" onClick={onClose}><X /></button></header>{children}</section></div> }
+
+export default function App() {
+  const [auth, setAuth] = useState<'loading' | 'yes' | 'no'>('loading')
+  useEffect(() => { void api('/auth/me').then(() => setAuth('yes')).catch((e: ApiError) => setAuth(e.status === 401 ? 'no' : 'no')) }, [])
+  async function logout() { await api('/auth/logout', { method: 'POST' }); setAuth('no') }
+  if (auth === 'loading') return <div className="app-loading">正在打开本地档案…</div>
+  if (auth === 'no') return <Login onLogin={() => setAuth('yes')} />
+  return <Shell logout={() => void logout()}><Routes><Route path="/" element={<HomePage />} /><Route path="/students" element={<StudentsPage />} /><Route path="/students/:id" element={<StudentPage />} /><Route path="/events" element={<EventsPage />} /><Route path="/events/new" element={<NewEventPage />} /><Route path="/events/:eventId/edit" element={<EditEventPage />} /></Routes></Shell>
+}
