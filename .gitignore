@@ -10,6 +10,7 @@ frontend/vite.config.js
 frontend/vite.config.d.ts
 data/app.db
 data/app.db-*
+data/config.json
 data/avatars/*
 data/attachments/*
 data/backups/*
