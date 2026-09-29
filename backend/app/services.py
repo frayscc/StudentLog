@@ -10,8 +10,8 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from .config import settings
-from .models import Event, Student, Tag
-from .schemas import EventCreate, StudentCreate, StudentOut
+from .models import Attachment, Event, Student, Tag
+from .schemas import AttachmentOut, EventCreate, StudentCreate, StudentOut
 
 ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp"}
 MAX_IMAGE_BYTES = 8 * 1024 * 1024
@@ -35,7 +35,18 @@ def student_out(student: Student) -> StudentOut:
 
 
 def event_query():
-    return select(Event).options(selectinload(Event.students), selectinload(Event.tags))
+    return select(Event).options(selectinload(Event.students), selectinload(Event.tags), selectinload(Event.attachments))
+
+
+def attachment_out(attachment: Attachment) -> AttachmentOut:
+    return AttachmentOut(
+        id=attachment.id,
+        original_filename=attachment.original_filename,
+        mime_type=attachment.mime_type,
+        file_size=attachment.file_size,
+        url=f"/files/attachments/{attachment.stored_filename}",
+        created_at=attachment.created_at,
+    )
 
 
 def event_out(event: Event) -> dict:
@@ -58,6 +69,7 @@ def event_out(event: Event) -> dict:
             for s in event.students
         ],
         "tags": [tag.name for tag in event.tags],
+        "attachments": [attachment_out(item).model_dump(mode="json") for item in event.attachments],
         "created_at": event.created_at,
         "updated_at": event.updated_at,
     }
@@ -107,6 +119,33 @@ async def save_avatar(student: Student, upload: UploadFile) -> str:
         old_path = settings.data_dir / "avatars" / Path(student.avatar_path).name
         old_path.unlink(missing_ok=True)
     return filename
+
+
+async def save_attachment(event: Event, upload: UploadFile) -> Attachment:
+    if upload.content_type not in ALLOWED_IMAGE_TYPES:
+        raise HTTPException(status_code=400, detail="附件仅支持 JPG、PNG、WEBP 图片")
+    content = await upload.read(MAX_IMAGE_BYTES + 1)
+    if len(content) > MAX_IMAGE_BYTES:
+        raise HTTPException(status_code=400, detail="附件图片不能超过 8MB")
+    try:
+        image = ImageOps.exif_transpose(Image.open(io.BytesIO(content))).convert("RGB")
+        image.thumbnail((1920, 1920), Image.Resampling.LANCZOS)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="附件图片文件无效") from exc
+    filename = f"{uuid.uuid4().hex}.webp"
+    target = settings.data_dir / "attachments" / filename
+    image.save(target, "WEBP", quality=84, method=6)
+    return Attachment(
+        event_id=event.id,
+        original_filename=Path(upload.filename or "image").name[:255],
+        stored_filename=filename,
+        mime_type="image/webp",
+        file_size=target.stat().st_size,
+    )
+
+
+def delete_attachment_file(attachment: Attachment) -> None:
+    (settings.data_dir / "attachments" / Path(attachment.stored_filename).name).unlink(missing_ok=True)
 
 
 def parse_student_import(text: str) -> list[StudentCreate]:

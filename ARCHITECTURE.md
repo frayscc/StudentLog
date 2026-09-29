@@ -12,7 +12,7 @@ StudentLog 是一个“具有 Web UI 的本地桌面工具”，不是需要持�
 
 模型固定放在 `models/paraformer/` 和 `models/sensevoice/`，与程序和 `data/` 分离，不打入 EXE。正式版禁止运行时静默联网下载。原始录音只在 `data/temp_audio/` 暂存并在请求结束后删除。
 
-Node.js、npm 与 Vite 仅用于开发和构建。正式发布采用绿色便携目录，并在 Phase 4 使用 PyInstaller 打包 Python 运行时与启动器。用户无需安装 Python、Node.js 或 Docker。
+Node.js、npm 与 Vite 仅用于开发和构建。当前同时提供 Docker Hub 镜像作为可选运行方式；Phase 4 仍将提供 PyInstaller 绿色便携版，使 Windows 本地用户无需安装 Python、Node.js 或 Docker。
 
 ## 持久数据
 
@@ -27,7 +27,7 @@ Node.js、npm 与 Vite 仅用于开发和构建。正式发布采用绿色便携
 
 ## 明确排除
 
-不引入 Docker、云服务器、NAS 部署、PostgreSQL、Redis、云数据库、多用户、远程访问或实时同步。备份与恢复是本地数据安全的核心能力，不以云同步替代。
+不引入云服务器、PostgreSQL、Redis、云数据库、多用户、远程访问或实时同步。Docker 只作为用户明确要求的可选封装方式，仍使用 `./data` 与 `./models` 本地绑定目录；备份与恢复是本地数据安全的核心能力，不以云同步替代。
 
 ## Phase 4：本地发布与体验优化
 

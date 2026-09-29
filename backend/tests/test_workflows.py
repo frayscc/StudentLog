@@ -1,5 +1,6 @@
 import io
 import os
+import sqlite3
 import uuid
 
 from fastapi.testclient import TestClient
@@ -12,6 +13,7 @@ from sqlalchemy.pool import StaticPool
 from app.auth import hash_password
 from app.config import settings
 from app.database import Base, get_db
+from app.data_portability import create_backup, restore_backup
 from app.hotwords import hotword_registry
 from app.main import app
 from app.models import AdminUser, Student
@@ -124,6 +126,32 @@ def test_phase1_multi_student_event_and_avatar(tmp_path):
             fetched = client.get(f"/api/events/{event.json()['id']}")
             assert fetched.status_code == 200
             assert fetched.json()["event_description"] == "午休期间交谈，提醒后停止。"
+            assert fetched.json()["attachments"] == []
+
+            attachment_image = Image.new("RGB", (2400, 1200), "#28584d")
+            attachment_buffer = io.BytesIO()
+            attachment_image.save(attachment_buffer, "JPEG")
+            attached = client.post(
+                f"/api/events/{event.json()['id']}/attachments",
+                files={"file": ("课堂 照片.jpg", attachment_buffer.getvalue(), "image/jpeg")},
+            )
+            assert attached.status_code == 200
+            attachment_path = tmp_path / "attachments" / attached.json()["url"].rsplit("/", 1)[-1]
+            assert attachment_path.is_file()
+            assert Image.open(attachment_path).width <= 1920
+            assert client.get(f"/api/events/{event.json()['id']}").json()["attachments"][0]["original_filename"] == "课堂 照片.jpg"
+
+            assert any(item["id"] == event.json()["id"] for item in client.get("/api/events?q=测试甲").json())
+            assert any(item["id"] == event.json()["id"] for item in client.get("/api/events?tag=午休").json())
+            assert any(item["id"] == event.json()["id"] for item in client.get(f"/api/events?student_id={ids[0]}").json())
+            assert client.get("/api/events?date_from=2030-01-01T00:00:00").json() == []
+
+            exported_json = client.get("/api/export/json")
+            assert exported_json.status_code == 200
+            assert any(item["id"] == event.json()["id"] for item in exported_json.json()["events"])
+            exported_csv = client.get("/api/export/csv")
+            assert exported_csv.status_code == 200
+            assert "测试甲" in exported_csv.content.decode("utf-8-sig")
             for student_id in ids:
                 timeline = client.get(f"/api/events?student_id={student_id}")
                 assert timeline.status_code == 200
@@ -162,7 +190,50 @@ def test_phase1_multi_student_event_and_avatar(tmp_path):
             with TestSession() as session:
                 assert "杨煜洆" not in hotword_registry.get(session)
             assert client.delete(f"/api/events/{event.json()['id']}").status_code == 200
+            assert not attachment_path.exists()
     finally:
         app.dependency_overrides.clear()
         hotword_registry.invalidate()
         settings.data_dir = original_data_dir
+
+
+def _create_portable_database(path, student_name: str) -> None:
+    connection = sqlite3.connect(path)
+    try:
+        connection.executescript("""
+            CREATE TABLE admin_users (id TEXT PRIMARY KEY, username TEXT, password_hash TEXT, created_at TEXT);
+            CREATE TABLE students (id TEXT PRIMARY KEY, student_no TEXT, name TEXT);
+            CREATE TABLE events (id TEXT PRIMARY KEY, event_description TEXT);
+        """)
+        connection.execute("INSERT INTO students VALUES ('s1', '01', ?)", (student_name,))
+        connection.commit()
+    finally:
+        connection.close()
+
+
+def test_phase3_complete_backup_and_restore(tmp_path):
+    source = tmp_path / "source"
+    target = tmp_path / "target"
+    for root in (source, target):
+        for folder in ("avatars", "attachments", "backups"):
+            (root / folder).mkdir(parents=True, exist_ok=True)
+    _create_portable_database(source / "app.db", "备份学生")
+    (source / "avatars" / "avatar.webp").write_bytes(b"avatar-content")
+    (source / "attachments" / "proof.webp").write_bytes(b"attachment-content")
+    (source / "config.json").write_text('{"asr_provider":"paraformer"}', encoding="utf-8")
+    backup = create_backup(source)
+    assert backup.is_file()
+
+    _create_portable_database(target / "app.db", "恢复前学生")
+    (target / "avatars" / "old.webp").write_bytes(b"old")
+    safety_backup = restore_backup(backup.read_bytes(), target)
+    assert safety_backup and safety_backup.is_file()
+    connection = sqlite3.connect(target / "app.db")
+    try:
+        assert connection.execute("SELECT name FROM students WHERE id='s1'").fetchone()[0] == "备份学生"
+    finally:
+        connection.close()
+    assert (target / "avatars" / "avatar.webp").read_bytes() == b"avatar-content"
+    assert not (target / "avatars" / "old.webp").exists()
+    assert (target / "attachments" / "proof.webp").read_bytes() == b"attachment-content"
+    assert (target / "config.json").read_text(encoding="utf-8") == '{"asr_provider":"paraformer"}'

@@ -26,6 +26,16 @@ export type EventItem = {
   ai_confidence?: number | null
   students: Pick<Student, 'id' | 'student_no' | 'name' | 'avatar_url'>[]
   tags: string[]
+  attachments: Attachment[]
+}
+
+export type Attachment = {
+  id: string
+  original_filename: string
+  mime_type: string
+  file_size: number
+  url: string
+  created_at: string
 }
 
 export type NameCandidate = {

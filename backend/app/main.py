@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+from datetime import datetime
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, File, HTTPException, Response, UploadFile
@@ -12,14 +13,15 @@ from .auth import create_session, hash_password, require_login, verify_password
 from .asr import get_asr_provider
 from .audio import browser_audio_to_wav
 from .config import ensure_data_dirs, settings
+from .data_portability import create_backup, csv_export, json_export, restore_backup
 from .database import Base, engine, get_db
 from .hotwords import hotword_registry
 from .local_config import get_asr_provider_name, save_asr_provider_name
-from .models import AdminUser, Event, Student
+from .models import AdminUser, Attachment, Event, Student, Tag
 from .name_resolver import canonicalize_student_names, normalized_pinyin, resolve_students
 from .providers import ProviderError, get_llm_provider
 from .schemas import ASRSettingsOut, ASRSettingsUpdate, ASRStatus, AuthStatus, EventCreate, EventOut, EventUpdate, LoginRequest, SetupRequest, StructureRequest, StructureResponse, StudentCreate, StudentOut, StudentUpdate, TranscriptResponse
-from .services import apply_event, event_out, event_query, parse_student_import, save_avatar, student_out
+from .services import apply_event, attachment_out, delete_attachment_file, event_out, event_query, parse_student_import, save_attachment, save_avatar, student_out
 
 
 @asynccontextmanager
@@ -31,6 +33,7 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(title="StudentLog", lifespan=lifespan)
 app.mount("/files/avatars", StaticFiles(directory=settings.data_dir / "avatars"), name="avatars")
+app.mount("/files/attachments", StaticFiles(directory=settings.data_dir / "attachments"), name="attachments")
 
 
 @app.get("/api/health")
@@ -280,16 +283,43 @@ async def structure_event(payload: StructureRequest, db: Session = Depends(get_d
 
 
 @app.get("/api/events", response_model=list[EventOut], dependencies=[Depends(require_login)])
-def list_events(student_id: str | None = None, category: str | None = None, q: str = "", db: Session = Depends(get_db)):
+def list_events(
+    student_id: str | None = None,
+    category: str | None = None,
+    tag: str | None = None,
+    q: str = "",
+    date_from: datetime | None = None,
+    date_to: datetime | None = None,
+    db: Session = Depends(get_db),
+):
     query = event_query().order_by(Event.occurred_at.desc())
     if student_id:
         query = query.where(Event.students.any(Student.id == student_id))
     if category:
         query = query.where(Event.category == category)
+    if tag:
+        query = query.where(Event.tags.any(Tag.name == tag))
+    if date_from:
+        query = query.where(Event.occurred_at >= date_from)
+    if date_to:
+        query = query.where(Event.occurred_at <= date_to)
     if q:
         like = f"%{q}%"
-        query = query.where(or_(Event.event_description.like(like), Event.student_response.like(like), Event.teacher_action.like(like), Event.follow_up.like(like)))
+        query = query.where(or_(
+            Event.event_description.like(like),
+            Event.raw_transcript.like(like),
+            Event.student_response.like(like),
+            Event.teacher_action.like(like),
+            Event.follow_up.like(like),
+            Event.students.any(or_(Student.name.like(like), Student.student_no.like(like))),
+            Event.tags.any(Tag.name.like(like)),
+        ))
     return [event_out(item) for item in db.scalars(query)]
+
+
+@app.get("/api/tags", response_model=list[str], dependencies=[Depends(require_login)])
+def list_tags(db: Session = Depends(get_db)):
+    return list(db.scalars(select(Tag.name).order_by(Tag.name)))
 
 
 @app.post("/api/events", response_model=EventOut, dependencies=[Depends(require_login)])
@@ -322,12 +352,73 @@ def update_event(event_id: str, payload: EventUpdate, db: Session = Depends(get_
 
 @app.delete("/api/events/{event_id}", dependencies=[Depends(require_login)])
 def delete_event(event_id: str, db: Session = Depends(get_db)):
-    event = db.get(Event, event_id)
+    event = db.scalar(event_query().where(Event.id == event_id))
     if not event:
         raise HTTPException(status_code=404, detail="记录不存在")
+    for attachment in event.attachments:
+        delete_attachment_file(attachment)
     db.delete(event)
     db.commit()
     return {"ok": True}
+
+
+@app.post("/api/events/{event_id}/attachments", dependencies=[Depends(require_login)])
+async def upload_event_attachment(event_id: str, file: UploadFile = File(...), db: Session = Depends(get_db)):
+    event = db.get(Event, event_id)
+    if not event:
+        raise HTTPException(status_code=404, detail="记录不存在")
+    attachment = await save_attachment(event, file)
+    db.add(attachment)
+    db.commit()
+    db.refresh(attachment)
+    return attachment_out(attachment)
+
+
+@app.delete("/api/attachments/{attachment_id}", dependencies=[Depends(require_login)])
+def delete_event_attachment(attachment_id: str, db: Session = Depends(get_db)):
+    attachment = db.get(Attachment, attachment_id)
+    if not attachment:
+        raise HTTPException(status_code=404, detail="附件不存在")
+    delete_attachment_file(attachment)
+    db.delete(attachment)
+    db.commit()
+    return {"ok": True}
+
+
+@app.get("/api/export/json", dependencies=[Depends(require_login)])
+def export_json(db: Session = Depends(get_db)):
+    students = [item.model_dump(mode="json") for item in (student_out(student) for student in db.scalars(select(Student).options(selectinload(Student.events)).order_by(Student.student_no)))]
+    events = [event_out(event) for event in db.scalars(event_query().order_by(Event.occurred_at.desc()))]
+    content = json_export(students, events)
+    filename = f"studentlog-export-{datetime.now():%Y%m%d}.json"
+    return Response(content, media_type="application/json", headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+
+
+@app.get("/api/export/csv", dependencies=[Depends(require_login)])
+def export_csv(db: Session = Depends(get_db)):
+    events = [event_out(event) for event in db.scalars(event_query().order_by(Event.occurred_at.desc()))]
+    content = csv_export(events)
+    filename = f"studentlog-export-{datetime.now():%Y%m%d}.csv"
+    return Response(content, media_type="text/csv; charset=utf-8", headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+
+
+@app.get("/api/backups/export", dependencies=[Depends(require_login)])
+def export_backup():
+    path = create_backup()
+    return FileResponse(path, media_type="application/zip", filename=path.name)
+
+
+@app.post("/api/backups/restore", dependencies=[Depends(require_login)])
+async def import_backup(response: Response, file: UploadFile = File(...)):
+    if not (file.filename or "").lower().endswith(".zip"):
+        raise HTTPException(status_code=400, detail="请选择 StudentLog ZIP 备份")
+    content = await file.read(512 * 1024 * 1024 + 1)
+    if len(content) > 512 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="备份文件不能超过 512MB")
+    safety_backup = restore_backup(content)
+    hotword_registry.invalidate()
+    response.delete_cookie("studentlog_session")
+    return {"ok": True, "safety_backup": safety_backup.name if safety_backup else None, "message": "恢复完成，请重新登录并刷新页面"}
 
 
 if settings.frontend_dist.exists():

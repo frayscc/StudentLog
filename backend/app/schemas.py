@@ -68,6 +68,15 @@ class StudentBrief(BaseModel):
     avatar_url: str | None = None
 
 
+class AttachmentOut(BaseModel):
+    id: str
+    original_filename: str
+    mime_type: str
+    file_size: int
+    url: str
+    created_at: datetime
+
+
 class EventOut(BaseModel):
     id: str
     occurred_at: datetime
@@ -84,6 +93,7 @@ class EventOut(BaseModel):
     ai_confidence: float | None
     students: list[StudentBrief]
     tags: list[str]
+    attachments: list[AttachmentOut] = []
     created_at: datetime
     updated_at: datetime
 

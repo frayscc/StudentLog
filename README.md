@@ -2,7 +2,7 @@
 
 StudentLog 是供班主任个人使用的本地学生事件档案工具。它使用浏览器作为界面，但数据保存在当前工作电脑上；需要时启动，用完即可关闭。
 
-当前完成 Phase 1 与 Phase 2 的可离线验证版本：
+当前完成 Phase 1、Phase 2 与 Phase 3：
 
 - 单管理员登录，密码以 scrypt 哈希保存在 SQLite；
 - 学生新增、编辑、停用、TXT/CSV 导入，以及安全的一键清空当前名单；
@@ -12,7 +12,7 @@ StudentLog 是供班主任个人使用的本地学生事件档案工具。它使
 - 分类、自定义标签、学生时间线与全部记录页；
 - 手机、平板和桌面响应式界面；
 - 前端生产资源可由 FastAPI 直接托管；
-- 数据固定保存在 `data/`，不依赖 Docker。
+- 数据固定保存在 `data/`；可本机运行，也可通过 Docker Hub 镜像启动；
 - 浏览器录音支持开始、暂停、继续、结束和取消；
 - 浏览器录音在本机临时转为 16 kHz 单声道 WAV，识别完成立即删除；
 - 本地 `LocalASRProvider` 抽象，Paraformer 默认、SenseVoiceSmall 备选；
@@ -24,6 +24,12 @@ StudentLog 是供班主任个人使用的本地学生事件档案工具。它使
 - DeepSeek JSON 结构化和 Pydantic 校验；
 - AI 草稿确认页、重新整理、字段编辑和确认保存；
 - 保存原始转写与教师最终确认内容。
+- 全文搜索覆盖学生姓名、学号、原始转写、事件字段和标签；
+- 支持按学生、分类、标签与时间范围组合筛选；
+- 事件支持图片附件，自动校正方向、压缩并生成 WebP；
+- 支持 JSON、CSV 数据导出；
+- 支持包含 SQLite、头像、附件和必要配置的完整 ZIP 备份与恢复；
+- 恢复前自动生成当前数据的安全备份，并校验 ZIP 路径与 SQLite 完整性。
 
 ## 开发运行
 
@@ -123,6 +129,8 @@ UTF-8 编码的 TXT 或 CSV 均可：
 
 数据库、头像、附件和备份分别位于 `data/app.db`、`data/avatars/`、`data/attachments/`、`data/backups/`。更新程序时保留整个 `data/` 目录即可。完整架构约束见 [ARCHITECTURE.md](ARCHITECTURE.md)。
 
+完整备份与结构化导出位于“系统设置 → 数据导出与备份”。恢复 ZIP 会替换当前数据库、头像和附件；执行前应用会自动将当前状态备份到 `data/backups/`，恢复完成后需要使用备份中的管理员账号重新登录。
+
 ## 测试
 
 ```powershell
@@ -136,6 +144,6 @@ npm run build
 
 - 尚未完成 20–50 条真实中文录音的 Paraformer/SenseVoice 对照验收；自动化测试不加载大型模型；
 - 尚未用真实 DeepSeek Key 完成端到端调用，当前自动化测试使用 Mock LLM；
-- 附件、完整全文检索、备份恢复和摘要属于后续阶段；
+- 阶段性 AI 摘要、PWA、草稿保护与 Windows 绿色 EXE 属于 Phase 4；
 - 全新数据库会在首次打开时要求创建本地管理员账号；已有数据库继续使用原账号，不会被升级覆盖；
 - `Start StudentLog.bat` 仍依赖开发机 Python，最终绿色 EXE 属于调整后的 Phase 4。

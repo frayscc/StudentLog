@@ -61,6 +61,7 @@ class Event(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, onupdate=datetime.now)
     students: Mapped[list[Student]] = relationship(secondary=event_students, back_populates="events")
     tags: Mapped[list["Tag"]] = relationship(secondary=event_tags, back_populates="events")
+    attachments: Mapped[list["Attachment"]] = relationship(back_populates="event", cascade="all, delete-orphan")
 
 
 class Tag(Base):
@@ -69,6 +70,19 @@ class Tag(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     name: Mapped[str] = mapped_column(String(60), unique=True, index=True)
     events: Mapped[list[Event]] = relationship(secondary=event_tags, back_populates="tags")
+
+
+class Attachment(Base):
+    __tablename__ = "attachments"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    event_id: Mapped[str] = mapped_column(String(36), ForeignKey("events.id", ondelete="CASCADE"), index=True)
+    original_filename: Mapped[str] = mapped_column(String(255))
+    stored_filename: Mapped[str] = mapped_column(String(255), unique=True)
+    mime_type: Mapped[str] = mapped_column(String(100))
+    file_size: Mapped[int] = mapped_column()
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+    event: Mapped[Event] = relationship(back_populates="attachments")
 
 
 class AdminUser(Base):
