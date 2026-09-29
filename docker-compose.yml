@@ -1,0 +1,25 @@
+services:
+  studentlog:
+    image: frayscc/studentlog:latest
+    build:
+      context: .
+      args:
+        INSTALL_ASR: "1"
+    ports:
+      - "8765:8765"
+    environment:
+      APP_SECRET: ${APP_SECRET:-change-this-secret}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-change-me}
+      LLM_PROVIDER: ${LLM_PROVIDER:-mock}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      ASR_PROVIDER: ${ASR_PROVIDER:-paraformer}
+      ASR_ALLOW_MODEL_DOWNLOAD: ${ASR_ALLOW_MODEL_DOWNLOAD:-false}
+    volumes:
+      - studentlog-data:/app/data
+      - studentlog-models:/app/models
+    restart: "no"
+
+volumes:
+  studentlog-data:
+  studentlog-models:

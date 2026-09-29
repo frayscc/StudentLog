@@ -56,6 +56,16 @@ cd ..
 
 启动器会在 `127.0.0.1:8765` 启动应用并打开默认浏览器。此批处理入口是 Phase 1 的开发机可用版本；无需安装 Python/Node.js 的绿色 `StudentLog.exe` 在 Phase 4 交付。
 
+## Docker 运行方式
+
+Docker 部署是可选的服务器/开发环境运行方式，不改变默认的本地便携版数据结构。镜像内的 FastAPI 会直接托管 `frontend/dist`：
+
+```powershell
+docker compose up -d --build
+```
+
+浏览器打开 `http://127.0.0.1:8765`。`studentlog-data` 保存 SQLite、照片、附件和备份，`studentlog-models` 保存本地 ASR 模型；升级镜像不会覆盖这两个卷。首次正式使用请在 `.env` 中修改 `ADMIN_PASSWORD` 和 `APP_SECRET`。如果只需要不含本地 ASR 依赖的轻量镜像，可用 `docker build --build-arg INSTALL_ASR=0 -t frayscc/studentlog:latest .`。
+
 ## 本地语音识别
 
 语音识别完全离线，默认使用 CPU 版 Paraformer，不再使用或配置阿里云 ASR。先安装本地语音依赖：
