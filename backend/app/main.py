@@ -18,7 +18,7 @@ from .local_config import get_asr_provider_name, save_asr_provider_name
 from .models import AdminUser, Event, Student
 from .name_resolver import canonicalize_student_names, normalized_pinyin, resolve_students
 from .providers import ProviderError, get_llm_provider
-from .schemas import ASRSettingsOut, ASRSettingsUpdate, ASRStatus, EventCreate, EventOut, EventUpdate, LoginRequest, StructureRequest, StructureResponse, StudentCreate, StudentOut, StudentUpdate, TranscriptResponse
+from .schemas import ASRSettingsOut, ASRSettingsUpdate, ASRStatus, AuthStatus, EventCreate, EventOut, EventUpdate, LoginRequest, SetupRequest, StructureRequest, StructureResponse, StudentCreate, StudentOut, StudentUpdate, TranscriptResponse
 from .services import apply_event, event_out, event_query, parse_student_import, save_avatar, student_out
 
 
@@ -26,13 +26,6 @@ from .services import apply_event, event_out, event_query, parse_student_import,
 async def lifespan(_: FastAPI):
     ensure_data_dirs()
     Base.metadata.create_all(engine)
-    db = next(get_db())
-    try:
-        if not db.scalar(select(AdminUser).where(AdminUser.username == settings.admin_username)):
-            db.add(AdminUser(username=settings.admin_username, password_hash=hash_password(settings.admin_password)))
-            db.commit()
-    finally:
-        db.close()
     yield
 
 
@@ -43,6 +36,28 @@ app.mount("/files/avatars", StaticFiles(directory=settings.data_dir / "avatars")
 @app.get("/api/health")
 def health():
     return {"status": "ok"}
+
+
+@app.get("/api/auth/status", response_model=AuthStatus)
+def auth_status(db: Session = Depends(get_db)):
+    return AuthStatus(initialized=db.scalar(select(AdminUser.id).limit(1)) is not None)
+
+
+@app.post("/api/auth/setup")
+def setup(payload: SetupRequest, response: Response, db: Session = Depends(get_db)):
+    if db.scalar(select(AdminUser.id).limit(1)) is not None:
+        raise HTTPException(status_code=409, detail="管理员账号已经创建，请直接登录")
+    username = payload.username.strip()
+    if not username:
+        raise HTTPException(status_code=400, detail="用户名不能为空")
+    db.add(AdminUser(username=username, password_hash=hash_password(payload.password)))
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="管理员账号已经创建，请直接登录") from exc
+    create_session(response, username)
+    return {"username": username}
 
 
 @app.post("/api/auth/login")
@@ -249,6 +264,9 @@ async def structure_event(payload: StructureRequest, db: Session = Depends(get_d
         draft = await provider.structure(transcript, resolution.candidates, resolution.auto_selected_ids)
     except ProviderError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+    # Local exact/alias/high-confidence matches are deterministic and must not
+    # be dropped by a cloud model. The teacher can still deselect them in review.
+    draft.student_ids = list(dict.fromkeys([*resolution.auto_selected_ids, *draft.student_ids]))
     confidence_by_id = {item.student_id: item.confidence for item in resolution.candidates}
     requires_confirmation = not draft.student_ids or any(confidence_by_id.get(student_id, 0) < 0.9 for student_id in draft.student_ids)
     return StructureResponse(

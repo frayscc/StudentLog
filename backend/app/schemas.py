@@ -93,6 +93,15 @@ class LoginRequest(BaseModel):
     password: str
 
 
+class SetupRequest(BaseModel):
+    username: str = Field(min_length=1, max_length=100)
+    password: str = Field(min_length=8, max_length=128)
+
+
+class AuthStatus(BaseModel):
+    initialized: bool
+
+
 class NameCandidate(BaseModel):
     student_id: str
     student_no: str

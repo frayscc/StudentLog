@@ -8,8 +8,6 @@ ROOT_DIR = Path(__file__).resolve().parents[2]
 
 class Settings(BaseSettings):
     app_secret: str = "dev-only-change-me"
-    admin_username: str = "admin"
-    admin_password: str = "change-me"
     studentlog_port: int = 8765
     llm_provider: str = "mock"
     asr_provider: str = "paraformer"

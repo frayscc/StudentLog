@@ -36,6 +36,31 @@ def test_spaced_transcript_name_correction():
     assert all(candidate.confidence == 1 for candidate in resolution.candidates)
 
 
+def test_first_run_setup(tmp_path):
+    test_engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+    TestSession = sessionmaker(bind=test_engine, expire_on_commit=False)
+    Base.metadata.create_all(test_engine)
+
+    def test_db():
+        with TestSession() as session:
+            yield session
+
+    app.dependency_overrides[get_db] = test_db
+    try:
+        with TestClient(app) as client:
+            assert client.get("/api/auth/status").json() == {"initialized": False}
+            too_short = client.post("/api/auth/setup", json={"username": "teacher", "password": "short"})
+            assert too_short.status_code == 422
+            setup = client.post("/api/auth/setup", json={"username": "teacher", "password": "safe-password"})
+            assert setup.status_code == 200
+            assert client.get("/api/auth/me").json() == {"username": "teacher"}
+            assert client.get("/api/auth/status").json() == {"initialized": True}
+            duplicate = client.post("/api/auth/setup", json={"username": "other", "password": "other-password"})
+            assert duplicate.status_code == 409
+    finally:
+        app.dependency_overrides.clear()
+
+
 def test_phase1_multi_student_event_and_avatar(tmp_path):
     original_data_dir = settings.data_dir
     settings.data_dir = tmp_path
@@ -111,6 +136,24 @@ def test_phase1_multi_student_event_and_avatar(tmp_path):
             target_candidate = next(item for item in structured.json()["candidates"] if item["student_id"] == target.json()["id"])
             assert target_candidate["confidence"] >= 0.9
             assert target.json()["id"] in structured.json()["draft"]["student_ids"]
+            assert near_homophone.json()["id"] in structured.json()["draft"]["student_ids"]
+
+            voice_event_payload = {
+                **structured.json()["draft"],
+                "raw_transcript": "今天中午杨育成和方林在教室午休时讲话。",
+                "record_method": "voice",
+                "ai_processed": True,
+            }
+            voice_event = client.post("/api/events", json=voice_event_payload)
+            assert voice_event.status_code == 200
+            assert {item["id"] for item in voice_event.json()["students"]} == {
+                target.json()["id"],
+                near_homophone.json()["id"],
+            }
+            for student_id in voice_event_payload["student_ids"]:
+                timeline = client.get(f"/api/events?student_id={student_id}")
+                assert any(item["id"] == voice_event.json()["id"] for item in timeline.json())
+            assert client.delete(f"/api/events/{voice_event.json()['id']}").status_code == 200
 
             cleared = client.delete("/api/students/clear")
             assert cleared.status_code == 200

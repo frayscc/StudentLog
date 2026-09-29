@@ -43,7 +43,7 @@ npm run dev
 .venv\Scripts\python -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8765 --reload
 ```
 
-开发页面为 `http://127.0.0.1:5173`。首次账号默认是 `admin` / `change-me`，实际使用前必须在首次启动前通过 `.env` 修改。
+开发页面为 `http://127.0.0.1:5173`。全新数据库首次打开时会进入初始化页面，由用户自行创建本地管理员账号。
 
 ## 本地生产方式
 
@@ -61,10 +61,11 @@ cd ..
 Docker 部署是可选的服务器/开发环境运行方式，不改变默认的本地便携版数据结构。镜像内的 FastAPI 会直接托管 `frontend/dist`：
 
 ```powershell
-docker compose up -d --build
+docker compose pull
+docker compose up -d
 ```
 
-浏览器打开 `http://127.0.0.1:8765`。`studentlog-data` 保存 SQLite、照片、附件和备份，`studentlog-models` 保存本地 ASR 模型；升级镜像不会覆盖这两个卷。首次正式使用请在 `.env` 中修改 `ADMIN_PASSWORD` 和 `APP_SECRET`。如果只需要不含本地 ASR 依赖的轻量镜像，可用 `docker build --build-arg INSTALL_ASR=0 -t frayscc/studentlog:latest .`。
+Compose 直接使用 Docker Hub 的 `docker.io/frayscc/studentlog:latest`，不在部署电脑上构建镜像。浏览器打开 `http://127.0.0.1:8765`。当前目录的 `./data` 映射到容器 `/app/data`，`./models` 映射到 `/app/models`；删除或升级容器不会覆盖这两个目录。全新数据库第一次打开时会显示初始化页面，由用户自行创建管理员用户名和密码，不再提供默认密码。建议在 `.env` 中为 `APP_SECRET` 设置一个长随机字符串。
 
 ## 本地语音识别
 
@@ -136,5 +137,5 @@ npm run build
 - 尚未完成 20–50 条真实中文录音的 Paraformer/SenseVoice 对照验收；自动化测试不加载大型模型；
 - 尚未用真实 DeepSeek Key 完成端到端调用，当前自动化测试使用 Mock LLM；
 - 附件、完整全文检索、备份恢复和摘要属于后续阶段；
-- 当前登录密码仅能在首次创建数据库前通过 `.env` 设置，设置页面在后续阶段补充；
+- 全新数据库会在首次打开时要求创建本地管理员账号；已有数据库继续使用原账号，不会被升级覆盖；
 - `Start StudentLog.bat` 仍依赖开发机 Python，最终绿色 EXE 属于调整后的 Phase 4。
