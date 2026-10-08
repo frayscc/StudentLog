@@ -10,14 +10,14 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from app.auth import hash_password
-from app.config import settings
-from app.database import Base, get_db
-from app.data_portability import create_backup, restore_backup
-from app.hotwords import hotword_registry
-from app.main import app
-from app.models import AdminUser, Student
-from app.name_resolver import canonicalize_student_names, normalized_pinyin, resolve_students
+from backend.app.auth import hash_password
+from backend.app.config import settings
+from backend.app.database import Base, get_db
+from backend.app.data_portability import create_backup, restore_backup
+from backend.app.hotwords import hotword_registry
+from backend.app.main import app
+from backend.app.models import AdminUser, Student
+from backend.app.name_resolver import canonicalize_student_names, normalized_pinyin, resolve_students
 
 
 def login(client: TestClient) -> None:

@@ -115,6 +115,18 @@ docker compose -f docker-compose.dev.yml run --rm studentlog pytest backend/test
 docker compose -f docker-compose.dev.yml run --rm frontend npm run build
 ```
 
+## Docker 发布验收
+
+GitHub Actions 在推送镜像前会用临时目录执行真实容器验收：首次创建管理员、生产页面加载、转写文本姓名纠正、多学生档案关联、照片与附件、摘要与导出、停止再启动、重建容器，以及 ZIP 备份恢复后再次重建。任一步失败均停止发布，不更新 Docker Hub 的 `latest`。验收使用 Mock LLM，不调用 DeepSeek，也不加载大型语音模型。
+
+可在安装了 Docker 和 Python 的开发电脑手动执行：
+
+```powershell
+python scripts/docker_smoke_test.py --image frayscc/studentlog:latest
+```
+
+脚本使用独立的 Compose 项目与临时 `data`、`models` 目录，结束后清理测试容器和测试目录，不操作正式部署的数据。
+
 ## 当前已知问题
 
 - 尚未完成 20–50 条真实中文录音的 Paraformer/SenseVoice 对照验收；自动化测试不加载大型模型；
