@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator, model_validator
 
 
 class StudentBase(BaseModel):
@@ -158,12 +158,12 @@ class SummaryRequest(BaseModel):
 
 
 class SummarySections(BaseModel):
-    learning_records: list[str] = []
-    discipline_records: list[str] = []
-    teacher_communication: list[str] = []
-    family_communication: list[str] = []
-    actions_taken: list[str] = []
-    follow_up_items: list[str] = []
+    learning_records: list[str]
+    discipline_records: list[str]
+    teacher_communication: list[str]
+    family_communication: list[str]
+    actions_taken: list[str]
+    follow_up_items: list[str]
 
 
 class SummaryResponse(BaseModel):
@@ -191,6 +191,17 @@ class ASRSettingsUpdate(BaseModel):
 
 class ASRSettingsOut(BaseModel):
     provider: Literal["paraformer", "sensevoice"]
+
+
+class LLMSettingsUpdate(BaseModel):
+    provider: Literal["mock", "deepseek"]
+    api_key: SecretStr | None = None
+    clear_api_key: bool = False
+
+
+class LLMSettingsOut(BaseModel):
+    provider: Literal["mock", "deepseek"]
+    api_key_configured: bool
 
 
 class ASRProviderStatus(BaseModel):

@@ -33,9 +33,10 @@ def require_login(studentlog_session: str | None = Cookie(default=None)) -> str:
     try:
         body, signature = studentlog_session.rsplit(":", 1)
         username, expiry, _ = body.split(":", 2)
+        expiry_timestamp = int(expiry)
     except ValueError as exc:
         raise HTTPException(status_code=401, detail="登录状态无效") from exc
-    if not hmac.compare_digest(signature, _signature(body)) or int(expiry) < datetime.now().timestamp():
+    if not hmac.compare_digest(signature, _signature(body)) or expiry_timestamp < datetime.now().timestamp():
         raise HTTPException(status_code=401, detail="登录已过期")
     return username
 

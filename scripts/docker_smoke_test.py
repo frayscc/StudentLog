@@ -79,6 +79,11 @@ class Client:
 def seed(client, credentials):
     check(client.request('/api/auth/status') == {'initialized': False}, 'Expected an empty test database')
     client.request('/api/auth/setup', 'POST', credentials)
+    llm_status = client.request('/api/settings/llm', 'PUT', {
+        'provider': 'mock', 'api_key': 'sk-smoke-local-only',
+    })
+    check(llm_status == {'provider': 'mock', 'api_key_configured': True}, 'AI settings were not saved')
+    check('sk-smoke-local-only' not in json.dumps(llm_status), 'AI settings revealed the API Key')
     html = client.request('/').decode()
     check('/assets/' in html, 'Production frontend is not served')
     first = client.request('/api/students', 'POST', {'student_no': '01', 'name': '陈颢霖'})
@@ -97,7 +102,7 @@ def seed(client, credentials):
     backup = client.request('/api/backups/export')
     with zipfile.ZipFile(io.BytesIO(backup)) as archive:
         members = archive.namelist()
-        check('app.db' in members and 'metadata.json' in members, 'Backup has no database or metadata')
+        check({'app.db', 'metadata.json', 'config.json'}.issubset(members), 'Backup has no database, metadata or configuration')
         check(any(path.startswith('avatars/') for path in members), 'Backup has no avatar')
         check(any(path.startswith('attachments/') for path in members), 'Backup has no attachment')
     return {
@@ -110,6 +115,8 @@ def seed(client, credentials):
 def verify(client, credentials, state):
     check(client.request('/api/auth/status') == {'initialized': True}, 'Administrator was lost')
     client.request('/api/auth/login', 'POST', credentials)
+    check(client.request('/api/settings/llm') == {'provider': 'mock', 'api_key_configured': True},
+          'Saved AI settings were lost')
     event = client.request(f"/api/events/{state['event_id']}")
     check({student['id'] for student in event['students']} == state['ids'], 'Student associations were lost')
     check(event['raw_transcript'] == state['raw'], 'Original transcript was lost')
@@ -129,6 +136,8 @@ def verify(client, credentials, state):
 
 def verify_restore(client, credentials, state):
     client.request(f"/api/events/{state['event_id']}", 'DELETE')
+    client.request('/api/settings/llm', 'PUT', {'provider': 'mock', 'clear_api_key': True})
+    check(not client.request('/api/settings/llm')['api_key_configured'], 'Key clear did not take effect before restore')
     check(client.request('/api/events') == [], 'Delete did not take effect before restore')
     restored = client.request('/api/backups/restore', 'POST',
                               upload=('backup.zip', 'application/zip', state['backup']))

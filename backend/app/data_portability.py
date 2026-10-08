@@ -162,6 +162,7 @@ def restore_backup(content: bytes, data_dir: Path | None = None) -> Path:
         config = staging / "config.json"
         if config.is_file():
             shutil.copy2(config, root / "config.json")
+            (root / "config.json").chmod(0o600)
         else:
             (root / "config.json").unlink(missing_ok=True)
         return safety_backup

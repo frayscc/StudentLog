@@ -81,7 +81,9 @@ LLM_PROVIDER=mock
 
 ## DeepSeek 配置
 
-启用 DeepSeek：
+推荐在“系统设置 → AI 整理与阶段性摘要”填写 API Key 并选择 DeepSeek，保存后立即生效，无需重启容器。留空保留现有密钥，勾选清除会切回离线基础整理。设置接口只返回是否已配置，不回显密钥。本地设置保存在 `data/config.json`，优先于环境变量；完整 ZIP 备份包含该配置及密钥，恢复后立即生效，请妥善保存备份。
+
+也可使用环境变量启用 DeepSeek（尚未通过页面保存本地设置时生效）：
 
 ```text
 LLM_PROVIDER=deepseek
@@ -130,6 +132,6 @@ python scripts/docker_smoke_test.py --image frayscc/studentlog:latest
 ## 当前已知问题
 
 - 尚未完成 20–50 条真实中文录音的 Paraformer/SenseVoice 对照验收；自动化测试不加载大型模型；
-- 尚未用真实 DeepSeek Key 完成端到端调用，当前自动化测试使用 Mock LLM；
+- 尚未用真实 DeepSeek Key 完成端到端调用；已用模拟 HTTP 响应验证姓名还原、动态密钥、超时、鉴权、限流和无效 JSON，不产生 API 费用；
 - 全新数据库会在首次打开时要求创建本地管理员账号；已有数据库继续使用原账号，不会被升级覆盖；
 - 不再计划 PWA、手机端专项适配、Windows 启动器或绿色 EXE；后续发布与升级均以 Docker 镜像为准。

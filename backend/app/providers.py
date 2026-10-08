@@ -6,6 +6,7 @@ import httpx
 from pydantic import ValidationError
 
 from .config import settings
+from .local_config import get_llm_config
 from .schemas import NameCandidate, StructuredEventDraft, SummarySections
 
 
@@ -72,9 +73,35 @@ SUMMARY_SYSTEM_PROMPT = """你是学生事件档案的事实摘要助手。只�
 class DeepSeekProvider(LLMProvider):
     name = "deepseek"
 
+    async def _complete(self, body: dict) -> str:
+        api_key = get_llm_config()["api_key"]
+        if not api_key:
+            raise ProviderError("DeepSeek API Key 尚未配置，请在系统设置中填写")
+        try:
+            async with httpx.AsyncClient(timeout=60) as client:
+                response = await client.post(
+                    f"{settings.deepseek_base_url.rstrip('/')}/chat/completions",
+                    headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}, json=body,
+                )
+                response.raise_for_status()
+                content = response.json()["choices"][0]["message"]["content"]
+                if not isinstance(content, str):
+                    raise ValueError("Expected text content")
+                return content
+        except httpx.TimeoutException as exc:
+            raise ProviderError("DeepSeek 请求超时，原始内容已保留，请重试") from exc
+        except httpx.HTTPStatusError as exc:
+            code = exc.response.status_code
+            message = ("API Key 无效或没有访问权限，请检查系统设置" if code in {401, 403}
+                       else "请求过于频繁或账户额度不足，请稍后重试" if code == 429
+                       else "服务暂时不可用，请稍后重试")
+            raise ProviderError(f"DeepSeek {message}") from exc
+        except httpx.RequestError as exc:
+            raise ProviderError("无法连接 DeepSeek，请检查网络后重试") from exc
+        except (KeyError, IndexError, TypeError, ValueError) as exc:
+            raise ProviderError("DeepSeek 返回格式异常，请重试") from exc
+
     async def structure(self, transcript: str, candidates: list[NameCandidate], selected_ids: list[str]) -> StructuredEventDraft:
-        if not settings.deepseek_api_key:
-            raise ProviderError("DeepSeek API Key 尚未配置")
         allowed_ids = {item.student_id for item in candidates}
         strong_local_match = bool(selected_ids) and all(item.confidence >= 0.9 for item in candidates if item.student_id in selected_ids)
         candidate_payload = [{"student_id": item.student_id, **({} if strong_local_match else {"name": item.name})} for item in candidates]
@@ -85,20 +112,28 @@ class DeepSeekProvider(LLMProvider):
         user_content = json.dumps({"current_time": datetime.now().isoformat(), "transcript": minimized_transcript, "candidate_students": candidate_payload, "locally_selected_student_ids": selected_ids}, ensure_ascii=False)
         body = {"model": settings.deepseek_model, "messages": [{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": user_content}], "response_format": {"type": "json_object"}, "temperature": 0.1, "max_tokens": 1200, "stream": False}
         try:
-            async with httpx.AsyncClient(timeout=60) as client:
-                response = await client.post(f"{settings.deepseek_base_url.rstrip('/')}/chat/completions", headers={"Authorization": f"Bearer {settings.deepseek_api_key}", "Content-Type": "application/json"}, json=body)
-                response.raise_for_status()
-                content = response.json()["choices"][0]["message"]["content"]
+            content = await self._complete(body)
             draft = StructuredEventDraft.model_validate_json(content)
-        except (httpx.HTTPError, KeyError, IndexError, ValidationError, ValueError) as exc:
-            raise ProviderError(f"DeepSeek 整理失败，原始内容未保存：{exc}") from exc
+        except ValidationError as exc:
+            raise ProviderError("DeepSeek 整理结果格式不正确，原始内容已保留，请重试") from exc
         if any(student_id not in allowed_ids for student_id in draft.student_ids):
             raise ProviderError("DeepSeek 返回了候选名单之外的学生，已拒绝该结果")
+        for field in ("location", "category", "event_description", "student_response", "teacher_action", "follow_up"):
+            value = getattr(draft, field)
+            if value:
+                for item in candidates:
+                    value = value.replace(item.student_id, item.name)
+                setattr(draft, field, value)
+        draft.tags = [self._restore_names(tag, candidates) for tag in draft.tags]
         return draft
 
+    @staticmethod
+    def _restore_names(value: str, candidates: list[NameCandidate]) -> str:
+        for item in candidates:
+            value = value.replace(item.student_id, item.name)
+        return value
+
     async def summarize(self, events: list[dict]) -> SummarySections:
-        if not settings.deepseek_api_key:
-            raise ProviderError("DeepSeek API Key 尚未配置，无法生成阶段性摘要")
         body = {
             "model": settings.deepseek_model,
             "messages": [
@@ -111,18 +146,11 @@ class DeepSeekProvider(LLMProvider):
             "stream": False,
         }
         try:
-            async with httpx.AsyncClient(timeout=60) as client:
-                response = await client.post(
-                    f"{settings.deepseek_base_url.rstrip('/')}/chat/completions",
-                    headers={"Authorization": f"Bearer {settings.deepseek_api_key}", "Content-Type": "application/json"},
-                    json=body,
-                )
-                response.raise_for_status()
-                content = response.json()["choices"][0]["message"]["content"]
+            content = await self._complete(body)
             return SummarySections.model_validate_json(content)
-        except (httpx.HTTPError, KeyError, IndexError, ValidationError, ValueError) as exc:
-            raise ProviderError(f"阶段性摘要生成失败，未修改任何档案：{exc}") from exc
+        except ValidationError as exc:
+            raise ProviderError("阶段性摘要格式不正确，未修改任何档案，请重试") from exc
 
 
 def get_llm_provider() -> LLMProvider:
-    return DeepSeekProvider() if settings.llm_provider.lower() == "deepseek" else MockLLMProvider()
+    return DeepSeekProvider() if str(get_llm_config()["provider"]).lower() == "deepseek" else MockLLMProvider()

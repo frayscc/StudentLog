@@ -16,12 +16,13 @@ from .config import ensure_data_dirs, settings
 from .data_portability import create_backup, csv_export, json_export, restore_backup
 from .database import Base, engine, get_db
 from .hotwords import hotword_registry
-from .local_config import get_asr_provider_name, save_asr_provider_name
+from .local_config import get_asr_provider_name, get_llm_config, save_asr_provider_name, update_local_config
 from .models import AdminUser, Attachment, Event, Student, Tag
 from .name_resolver import canonicalize_student_names, normalized_pinyin, resolve_students
 from .providers import ProviderError, get_llm_provider
 from .schemas import ASRSettingsOut, ASRSettingsUpdate, ASRStatus, AuthStatus, EventCreate, EventOut, EventUpdate, LoginRequest, SetupRequest, StructureRequest, StructureResponse, StudentCreate, StudentOut, StudentUpdate, SummaryRequest, SummaryResponse, TranscriptResponse
 from .services import apply_event, attachment_out, delete_attachment_file, event_out, event_query, parse_student_import, save_attachment, save_avatar, student_out
+from .schemas import LLMSettingsOut, LLMSettingsUpdate
 
 
 @asynccontextmanager
@@ -280,6 +281,29 @@ async def structure_event(payload: StructureRequest, db: Session = Depends(get_d
         requires_student_confirmation=requires_confirmation,
         name_corrections=[{"original": item.original, "corrected": item.corrected} for item in corrections],
     )
+
+
+@app.get("/api/settings/llm", response_model=LLMSettingsOut, dependencies=[Depends(require_login)])
+def get_llm_settings():
+    config = get_llm_config()
+    return LLMSettingsOut(provider=config["provider"], api_key_configured=bool(config["api_key"]))
+
+
+@app.put("/api/settings/llm", response_model=LLMSettingsOut, dependencies=[Depends(require_login)])
+def update_llm_settings(payload: LLMSettingsUpdate):
+    values = {"llm_provider": payload.provider}
+    if payload.clear_api_key:
+        values["deepseek_api_key"] = ""
+    elif payload.api_key and payload.api_key.get_secret_value().strip():
+        key = payload.api_key.get_secret_value().strip()
+        if len(key) > 512 or any(char.isspace() for char in key):
+            raise HTTPException(status_code=400, detail="API Key 格式不正确")
+        values["deepseek_api_key"] = key
+    current = get_llm_config()
+    if payload.provider == "deepseek" and not values.get("deepseek_api_key", current["api_key"]):
+        raise HTTPException(status_code=400, detail="启用 DeepSeek 前请先填写 API Key")
+    update_local_config(values)
+    return get_llm_settings()
 
 
 @app.post("/api/students/{student_id}/summary", response_model=SummaryResponse, dependencies=[Depends(require_login)])

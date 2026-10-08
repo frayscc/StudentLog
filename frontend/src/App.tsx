@@ -2,6 +2,7 @@ import { FormEvent, ReactNode, useEffect, useRef, useState } from 'react'
 import { BookOpen, CalendarDays, ChevronLeft, Clock3, Download, FileText, Home, ImagePlus, LogOut, Menu, Mic, Paperclip, Pause, Play, Plus, RotateCcw, Search, Settings, Square, Trash2, Upload, Users, WandSparkles, X } from 'lucide-react'
 import { Link, NavLink, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { api, ApiError } from './api'
+import LLMSettings from './LLMSettings'
 import type { Attachment, EventDraft, EventItem, StructureResult, Student, SummaryResult } from './types'
 
 const categories = ['课堂表现', '作业', '午休纪律', '表扬', '师生沟通', '家校沟通', '其他']
@@ -150,6 +151,10 @@ function SmartRecordPage() {
 }
 
 function SettingsPage() {
+  return <><SettingsDataPanel /><LLMSettings /></>
+}
+
+function SettingsDataPanel() {
   const [status, setStatus] = useState<ASRStatus>()
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState('')
@@ -166,7 +171,7 @@ function SettingsPage() {
     finally { setSaving(false) }
   }
   async function restore(file?: File) { if (!file || !confirm('恢复备份会替换当前数据库、头像和事件附件。系统会先自动保存一份当前数据的安全备份，确定继续吗？')) return; setRestoring(true); setMessage(''); const body = new FormData(); body.append('file', file); try { const result = await api<{ message: string; safety_backup?: string }>('/backups/restore', { method: 'POST', body }); alert(`${result.message}${result.safety_backup ? `\n当前数据安全备份：${result.safety_backup}` : ''}`); window.location.reload() } catch (error) { setMessage((error as Error).message); setRestoring(false) } }
-  return <><PageHeader eyebrow="只保存在这台电脑" title="系统设置" /><section className="settings-panel"><div className="section-title"><div><h2>本地语音识别</h2><p>默认使用 Paraformer；两种模型都只使用 CPU，录音不会上传。</p></div></div>{status ? <div className="provider-grid">{status.providers.map(item => <button key={item.name} disabled={saving} className={cn('provider-card', status.provider === item.name && 'selected')} onClick={() => void choose(item.name)}><span className="provider-choice">{status.provider === item.name ? '已选择' : '选择'}</span><strong>{item.name === 'paraformer' ? 'Paraformer' : 'SenseVoiceSmall'}</strong><small>{item.name === 'paraformer' ? '推荐 · 支持学生姓名热词' : '备选 · 用于对照和回退'}</small><span className={cn('model-state', item.installed && 'ready')}>{item.installed ? item.loaded ? '模型已加载' : '模型已安装，首次使用时加载' : '模型尚未安装'}</span></button>)}</div> : <p>正在读取模型状态…</p>}<div className="settings-note"><strong>热词词典</strong><span>当前包含 {status?.hotword_count ?? '…'} 个学生姓名与场景词；学生新增、改名、停用或导入后会自动刷新。</span></div><div className="settings-note"><strong>模型文件</strong><span>模型放在程序目录的 models/paraformer 与 models/sensevoice 中，不会打进 EXE，也不会在使用录音时静默下载。</span></div>{message && <p className="settings-message">{message}</p>}</section><section className="settings-panel data-panel"><div className="section-title"><div><h2>数据导出与备份</h2><p>数据始终保存在本机。完整备份包含 SQLite、学生头像、事件附件和必要配置。</p></div></div><div className="data-actions"><a className="secondary" href="/api/export/json"><Download />导出 JSON</a><a className="secondary" href="/api/export/csv"><Download />导出 CSV</a><a className="primary" href="/api/backups/export"><Download />下载完整 ZIP 备份</a><label className="secondary file-button"><Upload />{restoring ? '正在恢复…' : '从 ZIP 恢复'}<input type="file" accept=".zip,application/zip" disabled={restoring} onChange={e => void restore(e.target.files?.[0])} /></label></div><p className="backup-warning">恢复会替换当前数据；执行前系统会自动在 data/backups 中保存当前状态。</p></section></>
+  return <><PageHeader eyebrow="只保存在这台电脑" title="系统设置" /><section className="settings-panel"><div className="section-title"><div><h2>本地语音识别</h2><p>默认使用 Paraformer；两种模型都只使用 CPU，录音不会上传。</p></div></div>{status ? <div className="provider-grid">{status.providers.map(item => <button key={item.name} disabled={saving} className={cn('provider-card', status.provider === item.name && 'selected')} onClick={() => void choose(item.name)}><span className="provider-choice">{status.provider === item.name ? '已选择' : '选择'}</span><strong>{item.name === 'paraformer' ? 'Paraformer' : 'SenseVoiceSmall'}</strong><small>{item.name === 'paraformer' ? '推荐 · 支持学生姓名热词' : '备选 · 用于对照和回退'}</small><span className={cn('model-state', item.installed && 'ready')}>{item.installed ? item.loaded ? '模型已加载' : '模型已安装，首次使用时加载' : '模型尚未安装'}</span></button>)}</div> : <p>正在读取模型状态…</p>}<div className="settings-note"><strong>热词词典</strong><span>当前包含 {status?.hotword_count ?? '…'} 个学生姓名与场景词；学生新增、改名、停用或导入后会自动刷新。</span></div><div className="settings-note"><strong>模型文件</strong><span>模型放在宿主机的 ./models/paraformer 与 ./models/sensevoice 中，通过本地目录挂载到容器，不会在使用录音时静默下载。</span></div>{message && <p className="settings-message">{message}</p>}</section><section className="settings-panel data-panel"><div className="section-title"><div><h2>数据导出与备份</h2><p>数据始终保存在本机。完整备份包含 SQLite、学生头像、事件附件和必要配置。</p></div></div><div className="data-actions"><a className="secondary" href="/api/export/json"><Download />导出 JSON</a><a className="secondary" href="/api/export/csv"><Download />导出 CSV</a><a className="primary" href="/api/backups/export"><Download />下载完整 ZIP 备份</a><label className="secondary file-button"><Upload />{restoring ? '正在恢复…' : '从 ZIP 恢复'}<input type="file" accept=".zip,application/zip" disabled={restoring} onChange={e => void restore(e.target.files?.[0])} /></label></div><p className="backup-warning">恢复会替换当前数据；执行前系统会自动在 data/backups 中保存当前状态。</p></section></>
 }
 
 function NewEventPage() {

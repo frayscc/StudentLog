@@ -12,6 +12,10 @@ on:
       - "scripts/**"
       - ".github/workflows/docker-publish.yml"
 
+concurrency:
+  group: studentlog-docker-release
+  cancel-in-progress: true
+
 jobs:
   publish:
     runs-on: ubuntu-latest
@@ -20,6 +24,22 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Verify backend and simulated DeepSeek failures
+        env:
+          DATA_DIR: ${{ runner.temp }}/studentlog-unit-data
+          MODELS_DIR: ${{ runner.temp }}/studentlog-unit-models
+          LLM_PROVIDER: mock
+        run: |
+          python -m pip install -r backend/requirements.txt
+          python -m pytest backend/tests -q
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
