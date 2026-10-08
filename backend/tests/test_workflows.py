@@ -205,17 +205,14 @@ def test_phase1_multi_student_event_and_avatar(tmp_path):
 
 
 def _create_portable_database(path, student_name: str) -> None:
-    connection = sqlite3.connect(path)
+    test_engine = create_engine(f"sqlite:///{path.as_posix()}")
     try:
-        connection.executescript("""
-            CREATE TABLE admin_users (id TEXT PRIMARY KEY, username TEXT, password_hash TEXT, created_at TEXT);
-            CREATE TABLE students (id TEXT PRIMARY KEY, student_no TEXT, name TEXT);
-            CREATE TABLE events (id TEXT PRIMARY KEY, event_description TEXT);
-        """)
-        connection.execute("INSERT INTO students VALUES ('s1', '01', ?)", (student_name,))
-        connection.commit()
+        Base.metadata.create_all(test_engine)
+        with sessionmaker(bind=test_engine)() as session:
+            session.add(Student(id='s1', student_no='01', name=student_name))
+            session.commit()
     finally:
-        connection.close()
+        test_engine.dispose()
 
 
 def test_phase3_complete_backup_and_restore(tmp_path):

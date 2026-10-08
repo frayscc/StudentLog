@@ -135,6 +135,17 @@ def verify(client, credentials, state):
 
 
 def verify_restore(client, credentials, state):
+    tampered = io.BytesIO()
+    with zipfile.ZipFile(io.BytesIO(state['backup'])) as original, zipfile.ZipFile(tampered, 'w') as changed:
+        for member in original.infolist():
+            changed.writestr(member, b'{}' if member.filename == 'config.json' else original.read(member))
+    try:
+        client.request('/api/backups/restore', 'POST', upload=('tampered.zip', 'application/zip', tampered.getvalue()))
+    except urllib.error.HTTPError as error:
+        check(error.code == 400, 'Damaged backup should be rejected before replacing data')
+    else:
+        raise RuntimeError('Damaged backup was accepted')
+    verify(client, credentials, state)
     client.request(f"/api/events/{state['event_id']}", 'DELETE')
     client.request('/api/settings/llm', 'PUT', {'provider': 'mock', 'clear_api_key': True})
     check(not client.request('/api/settings/llm')['api_key_configured'], 'Key clear did not take effect before restore')

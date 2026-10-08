@@ -13,7 +13,7 @@ from .auth import create_session, hash_password, require_login, verify_password
 from .asr import get_asr_provider
 from .audio import browser_audio_to_wav
 from .config import ensure_data_dirs, settings
-from .data_portability import create_backup, csv_export, json_export, restore_backup
+from .data_portability import create_backup, csv_export, json_export, restore_backup, recover_interrupted_restores
 from .database import Base, engine, get_db
 from .hotwords import hotword_registry
 from .local_config import get_asr_provider_name, get_llm_config, save_asr_provider_name, update_local_config
@@ -23,16 +23,19 @@ from .providers import ProviderError, get_llm_provider
 from .schemas import ASRSettingsOut, ASRSettingsUpdate, ASRStatus, AuthStatus, EventCreate, EventOut, EventUpdate, LoginRequest, SetupRequest, StructureRequest, StructureResponse, StudentCreate, StudentOut, StudentUpdate, SummaryRequest, SummaryResponse, TranscriptResponse
 from .services import apply_event, attachment_out, delete_attachment_file, event_out, event_query, parse_student_import, save_attachment, save_avatar, student_out
 from .schemas import LLMSettingsOut, LLMSettingsUpdate
+from .maintenance import DataMaintenanceMiddleware
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    recover_interrupted_restores()
     ensure_data_dirs()
     Base.metadata.create_all(engine)
     yield
 
 
 app = FastAPI(title="StudentLog", lifespan=lifespan)
+app.add_middleware(DataMaintenanceMiddleware)
 app.mount("/files/avatars", StaticFiles(directory=settings.data_dir / "avatars"), name="avatars")
 app.mount("/files/attachments", StaticFiles(directory=settings.data_dir / "attachments"), name="attachments")
 
