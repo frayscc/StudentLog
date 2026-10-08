@@ -111,7 +111,7 @@ UTF-8 编码的 TXT 或 CSV 均可：
 ## 测试
 
 ```powershell
-docker compose -f docker-compose.dev.yml run --rm studentlog pytest backend/tests
+docker compose -f docker-compose.dev.yml run --rm studentlog python -m pytest backend/tests
 docker compose -f docker-compose.dev.yml run --rm frontend npm run build
 ```
 
