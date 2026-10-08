@@ -7,6 +7,7 @@ Only Python's standard library and Docker Compose are needed on the host.
 import argparse
 import io
 import json
+import os
 import secrets
 import struct
 import subprocess
@@ -151,13 +152,18 @@ def run(image):
         marker = models / 'persistence-marker.txt'
         marker.write_text('keep-models', encoding='utf-8')
         compose_file = root / 'compose.json'
-        compose_file.write_text(json.dumps({'services': {'app': {
+        service = {
             'image': image, 'ports': ['127.0.0.1::8765'], 'init': True,
             'stop_grace_period': '30s',
             'environment': {'APP_SECRET': secrets.token_hex(32), 'LLM_PROVIDER': 'mock',
                             'ASR_ALLOW_MODEL_DOWNLOAD': 'false'},
             'volumes': [f'{data.as_posix()}:/app/data', f'{models.as_posix()}:/app/models'],
-        }}}), encoding='utf-8')
+        }
+        # On Linux, keep bind-mounted test files owned by the runner so the
+        # temporary directory can be removed after the container exits.
+        if hasattr(os, 'getuid'):
+            service['user'] = f'{os.getuid()}:{os.getgid()}'
+        compose_file.write_text(json.dumps({'services': {'app': service}}), encoding='utf-8')
         command = ['docker', 'compose', '-p', 'studentlog-smoke-' + secrets.token_hex(6), '-f', str(compose_file)]
 
         def compose(*args):
