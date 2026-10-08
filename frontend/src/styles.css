@@ -43,7 +43,7 @@ textarea { resize: vertical; line-height: 1.6; }
 .side-bottom { margin-top: auto; display: grid; gap: 3px; }
 .local-badge { margin: 20px 11px 0; border-top: 1px solid #ffffff20; padding-top: 18px; font-size: .76rem; color: #9fb4ad; display: flex; gap: 8px; align-items: center; }
 .local-badge span { width: 7px; height: 7px; background: #66c99a; border-radius: 50%; }
-.content { margin-left: 244px; padding: 48px clamp(26px, 5vw, 76px) 80px; max-width: 1500px; }
+.content { margin-left: 244px; padding: 48px clamp(26px, 5vw, 76px) 80px; max-width: 1700px; }
 .mobile-head { display: none; }
 .page-header { display: flex; align-items: end; justify-content: space-between; gap: 24px; margin-bottom: 34px; }
 .page-header .eyebrow { margin-top: 0; }
@@ -146,6 +146,7 @@ textarea { resize: vertical; line-height: 1.6; }
 .attachment-grid button svg { width: 15px; }
 .modal-backdrop { position: fixed; inset: 0; background: #09211c80; z-index: 50; display: grid; place-items: center; padding: 20px; }
 .modal { width: min(600px, 100%); background: var(--paper); border-radius: 20px; padding: 24px; max-height: 90vh; overflow-y: auto; box-shadow: 0 24px 80px #071a1760; }
+.modal:has(.summary-controls) { width: min(980px, 100%); }
 .modal header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 22px; }
 .modal h2 { margin: 0; }
 .icon-button { width: 42px; height: 42px; border: 0; border-radius: 11px; background: transparent; color: var(--ink); display: grid; place-items: center; }
@@ -180,6 +181,8 @@ legend span { color: #7b8884; font-weight: 500; font-size: .8rem; margin-left: 6
 .review-alert { max-width: 850px; display: flex; gap: 8px 18px; flex-wrap: wrap; background: #e9f3ef; border: 1px solid #c7ddd4; border-radius: 13px; padding: 13px 16px; margin-bottom: 22px; }
 .review-alert.attention { background: #fff3e9; border-color: #f1c9ad; }
 .review-alert span { color: #667570; }
+.draft-notice { max-width: 850px; display: flex; justify-content: space-between; align-items: center; gap: 18px; padding: 12px 15px; margin-bottom: 16px; border-radius: 12px; color: #315c50; background: #e9f3ef; border: 1px solid #c7ddd4; }
+.draft-notice button { border: 0; background: transparent; color: #a7462b; font-weight: 750; }
 .raw-transcript { margin-top: 22px; border: 1px solid var(--line); border-radius: 12px; padding: 13px 15px; color: #65736e; }
 .raw-transcript summary { cursor: pointer; font-weight: 700; }
 .raw-transcript p { margin: 12px 0 0; white-space: pre-wrap; line-height: 1.65; }
@@ -199,6 +202,18 @@ legend span { color: #7b8884; font-weight: 500; font-size: .8rem; margin-left: 6
 .data-panel { margin-top: 18px; }
 .data-actions { display: flex; flex-wrap: wrap; gap: 10px; }
 .backup-warning { color: #8a5b48; font-size: .82rem; margin: 16px 0 0; }
+.summary-controls { display: grid; gap: 16px; padding-bottom: 18px; border-bottom: 1px solid var(--line); }
+.summary-presets { display: flex; gap: 8px; }
+.summary-dates { display: grid; grid-template-columns: 1fr 1fr auto; gap: 12px; align-items: end; }
+.summary-dates label { font-size: .8rem; }
+.summary-error { display: flex; gap: 10px; align-items: center; margin-top: 16px; }
+.summary-error .form-error { flex: 1; }
+.summary-result { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 18px; }
+.summary-meta { grid-column: span 2; color: #667570; background: #edf3f0; border-radius: 10px; padding: 11px 13px; margin: 0; font-size: .82rem; }
+.summary-result section { border: 1px solid var(--line); border-radius: 13px; padding: 15px; }
+.summary-result h3 { font-size: .95rem; margin-bottom: 9px; }
+.summary-result ul { margin: 0; padding-left: 20px; color: #4e625c; line-height: 1.6; }
+.summary-result p { color: #82908b; margin: 0; font-size: .86rem; }
 @keyframes pulse { 0%, 100% { box-shadow: 0 0 0 0 #d85f2f38; } 50% { box-shadow: 0 0 0 18px #d85f2f00; } }
 .scrim { display: none; }
 @media (max-width: 860px) { .quick-grid { grid-template-columns: 1fr 1fr; } .quick-primary { grid-column: span 2; } .profile-head { grid-template-columns: 120px 1fr; } .avatar-upload { width: 120px; height: 120px; } .profile-actions { grid-column: span 2; display: flex; } .event-filters { grid-template-columns: 1fr 1fr; } .event-filters .search { grid-column: span 2; } }

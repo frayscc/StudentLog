@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class StudentBase(BaseModel):
@@ -144,6 +144,36 @@ class StructureResponse(BaseModel):
     provider: str
     requires_student_confirmation: bool
     name_corrections: list[dict[str, str]] = []
+
+
+class SummaryRequest(BaseModel):
+    date_from: datetime
+    date_to: datetime
+
+    @model_validator(mode="after")
+    def valid_range(self):
+        if self.date_from > self.date_to:
+            raise ValueError("date_from must not be later than date_to")
+        return self
+
+
+class SummarySections(BaseModel):
+    learning_records: list[str] = []
+    discipline_records: list[str] = []
+    teacher_communication: list[str] = []
+    family_communication: list[str] = []
+    actions_taken: list[str] = []
+    follow_up_items: list[str] = []
+
+
+class SummaryResponse(BaseModel):
+    date_from: datetime
+    date_to: datetime
+    source_event_count: int
+    included_event_count: int
+    truncated: bool
+    provider: str
+    sections: SummarySections
 
 
 class TranscriptResponse(BaseModel):

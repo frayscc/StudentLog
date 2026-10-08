@@ -1,0 +1,40 @@
+services:
+  studentlog:
+    image: studentlog:dev
+    build:
+      context: .
+      args:
+        INSTALL_ASR: "1"
+    command: uvicorn backend.app.main:app --host 0.0.0.0 --port 8765 --reload
+    ports:
+      - "127.0.0.1:8765:8765"
+    environment:
+      APP_SECRET: ${APP_SECRET:-dev-only-change-me}
+      LLM_PROVIDER: ${LLM_PROVIDER:-mock}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      ASR_PROVIDER: ${ASR_PROVIDER:-paraformer}
+      ASR_ALLOW_MODEL_DOWNLOAD: ${ASR_ALLOW_MODEL_DOWNLOAD:-false}
+    volumes:
+      - ./backend:/app/backend
+      - ./scripts:/app/scripts
+      - ./data:/app/data
+      - ./models:/app/models
+    init: true
+
+  frontend:
+    image: node:22-alpine
+    working_dir: /frontend
+    command: sh -c "npm ci && npm run dev -- --host 0.0.0.0"
+    ports:
+      - "127.0.0.1:5173:5173"
+    environment:
+      VITE_PROXY_TARGET: http://studentlog:8765
+    volumes:
+      - ./frontend:/frontend
+      - studentlog-node-modules:/frontend/node_modules
+    depends_on:
+      - studentlog
+    init: true
+
+volumes:
+  studentlog-node-modules:

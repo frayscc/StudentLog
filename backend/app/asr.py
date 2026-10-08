@@ -42,7 +42,7 @@ class LocalASRProvider(ABC):
             return str(self.model_dir)
         if settings.asr_allow_model_download:
             return self.remote_model
-        raise ProviderError(f"{self.name} 模型尚未安装。请先运行 launcher/download_asr_models.py {self.name}")
+        raise ProviderError(f"{self.name} 模型尚未安装。请先通过 Docker 命令下载 {self.name} 模型")
 
     def _get_model(self):
         if self._model is not None:

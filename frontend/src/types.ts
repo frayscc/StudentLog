@@ -66,3 +66,22 @@ export type StructureResult = {
   requires_student_confirmation: boolean
   name_corrections: { original: string; corrected: string }[]
 }
+
+export type SummarySections = {
+  learning_records: string[]
+  discipline_records: string[]
+  teacher_communication: string[]
+  family_communication: string[]
+  actions_taken: string[]
+  follow_up_items: string[]
+}
+
+export type SummaryResult = {
+  date_from: string
+  date_to: string
+  source_event_count: number
+  included_event_count: number
+  truncated: boolean
+  provider: string
+  sections: SummarySections
+}

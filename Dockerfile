@@ -25,6 +25,7 @@ RUN pip install --no-cache-dir -r /tmp/requirements.txt \
     && if [ "$INSTALL_ASR" = "1" ]; then pip install --no-cache-dir -r /tmp/requirements-asr.txt; fi
 
 COPY backend/ ./backend/
+COPY scripts/ ./scripts/
 COPY --from=frontend-build /frontend/dist ./frontend/dist
 
 # These directories are deliberately outside the image lifecycle. Mount them
@@ -34,4 +35,6 @@ RUN mkdir -p /app/data/avatars /app/data/attachments /app/data/backups /app/data
 VOLUME ["/app/data", "/app/models"]
 
 EXPOSE 8765
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8765/api/health', timeout=3)" || exit 1
 CMD ["uvicorn", "backend.app.main:app", "--host", "0.0.0.0", "--port", "8765"]

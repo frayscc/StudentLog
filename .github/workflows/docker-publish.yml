@@ -9,6 +9,7 @@ on:
       - ".dockerignore"
       - "backend/**"
       - "frontend/**"
+      - "scripts/**"
       - ".github/workflows/docker-publish.yml"
 
 jobs:

@@ -5,7 +5,7 @@ from pathlib import Path
 from fastapi import Depends, FastAPI, File, HTTPException, Response, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
@@ -20,7 +20,7 @@ from .local_config import get_asr_provider_name, save_asr_provider_name
 from .models import AdminUser, Attachment, Event, Student, Tag
 from .name_resolver import canonicalize_student_names, normalized_pinyin, resolve_students
 from .providers import ProviderError, get_llm_provider
-from .schemas import ASRSettingsOut, ASRSettingsUpdate, ASRStatus, AuthStatus, EventCreate, EventOut, EventUpdate, LoginRequest, SetupRequest, StructureRequest, StructureResponse, StudentCreate, StudentOut, StudentUpdate, TranscriptResponse
+from .schemas import ASRSettingsOut, ASRSettingsUpdate, ASRStatus, AuthStatus, EventCreate, EventOut, EventUpdate, LoginRequest, SetupRequest, StructureRequest, StructureResponse, StudentCreate, StudentOut, StudentUpdate, SummaryRequest, SummaryResponse, TranscriptResponse
 from .services import apply_event, attachment_out, delete_attachment_file, event_out, event_query, parse_student_import, save_attachment, save_avatar, student_out
 
 
@@ -279,6 +279,47 @@ async def structure_event(payload: StructureRequest, db: Session = Depends(get_d
         provider=provider.name,
         requires_student_confirmation=requires_confirmation,
         name_corrections=[{"original": item.original, "corrected": item.corrected} for item in corrections],
+    )
+
+
+@app.post("/api/students/{student_id}/summary", response_model=SummaryResponse, dependencies=[Depends(require_login)])
+async def summarize_student(student_id: str, payload: SummaryRequest, db: Session = Depends(get_db)):
+    if not db.get(Student, student_id):
+        raise HTTPException(status_code=404, detail="学生不存在")
+    conditions = (
+        Event.students.any(Student.id == student_id),
+        Event.occurred_at >= payload.date_from,
+        Event.occurred_at <= payload.date_to,
+    )
+    source_count = db.scalar(select(func.count(Event.id)).where(*conditions)) or 0
+    events = list(db.scalars(event_query().where(*conditions).order_by(Event.occurred_at.desc()).limit(200)))
+    if not events:
+        raise HTTPException(status_code=400, detail="所选时间范围内没有可供摘要的记录")
+    facts = [
+        {
+            "occurred_at": item.occurred_at.isoformat(),
+            "category": item.category,
+            "event_description": item.event_description,
+            "student_response": item.student_response,
+            "teacher_action": item.teacher_action,
+            "follow_up": item.follow_up,
+            "tags": [tag.name for tag in item.tags],
+        }
+        for item in events
+    ]
+    provider = get_llm_provider()
+    try:
+        sections = await provider.summarize(facts)
+    except ProviderError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return SummaryResponse(
+        date_from=payload.date_from,
+        date_to=payload.date_to,
+        source_event_count=source_count,
+        included_event_count=len(events),
+        truncated=source_count > len(events),
+        provider=provider.name,
+        sections=sections,
     )
 
 

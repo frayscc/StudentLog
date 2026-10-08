@@ -3,9 +3,9 @@ services:
     image: docker.io/frayscc/studentlog:latest
     pull_policy: always
     ports:
-      - "8765:8765"
+      - "127.0.0.1:8765:8765"
     environment:
-      APP_SECRET: ${APP_SECRET:-change-this-secret}
+      APP_SECRET: ${APP_SECRET:?请在 .env 中设置 APP_SECRET}
       LLM_PROVIDER: ${LLM_PROVIDER:-mock}
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
       ASR_PROVIDER: ${ASR_PROVIDER:-paraformer}
@@ -13,4 +13,6 @@ services:
     volumes:
       - ./data:/app/data
       - ./models:/app/models
-    restart: "no"
+    init: true
+    stop_grace_period: 30s
+    restart: unless-stopped

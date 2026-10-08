@@ -1,8 +1,8 @@
 # StudentLog
 
-StudentLog 是供班主任个人使用的本地学生事件档案工具。它使用浏览器作为界面，但数据保存在当前工作电脑上；需要时启动，用完即可关闭。
+StudentLog 是供班主任个人使用的学生事件档案工具。产品以 PC 浏览器为主要界面，正式运行统一采用 Docker，数据和本地 ASR 模型仍保存在部署电脑的 `./data` 与 `./models`。
 
-当前完成 Phase 1、Phase 2 与 Phase 3：
+当前已完成 Phase 1–4 的主要功能：
 
 - 单管理员登录，密码以 scrypt 哈希保存在 SQLite；
 - 学生新增、编辑、停用、TXT/CSV 导入，以及安全的一键清空当前名单；
@@ -10,7 +10,7 @@ StudentLog 是供班主任个人使用的本地学生事件档案工具。它使
 - 照片卡片墙，按姓名或学号搜索；
 - 手工事件记录，一条事件可关联多名学生；
 - 分类、自定义标签、学生时间线与全部记录页；
-- 手机、平板和桌面响应式界面；
+- 面向 PC Chrome / Edge 的桌面布局；
 - 前端生产资源可由 FastAPI 直接托管；
 - 数据固定保存在 `data/`；可本机运行，也可通过 Docker Hub 镜像启动；
 - 浏览器录音支持开始、暂停、继续、结束和取消；
@@ -30,66 +30,43 @@ StudentLog 是供班主任个人使用的本地学生事件档案工具。它使
 - 支持 JSON、CSV 数据导出；
 - 支持包含 SQLite、头像、附件和必要配置的完整 ZIP 备份与恢复；
 - 恢复前自动生成当前数据的安全备份，并校验 ZIP 路径与 SQLite 完整性。
+- 学生档案支持 7 天、30 天、本学期和自定义日期的事实型阶段性摘要；
+- 文字与 AI 整理草稿自动保存在当前浏览器，意外刷新后可以恢复；
+- 网络、DeepSeek 和本地服务故障均显示明确错误，并保留可重试入口；
+- Docker 镜像提供健康检查、优雅停止和独立的 Docker 开发编排。
 
-## 开发运行
+## Docker 正式运行
 
-要求 Python 3.11+ 和 Node.js（仅开发/构建时需要）。
-
-```powershell
-python -m venv .venv
-.venv\Scripts\pip install -r backend\requirements.txt
-cd frontend
-npm install
-npm run dev
-```
-
-另开终端：
-
-```powershell
-.venv\Scripts\python -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8765 --reload
-```
-
-开发页面为 `http://127.0.0.1:5173`。全新数据库首次打开时会进入初始化页面，由用户自行创建本地管理员账号。
-
-## 本地生产方式
-
-```powershell
-cd frontend
-npm run build
-cd ..
-.\Start StudentLog.bat
-```
-
-启动器会在 `127.0.0.1:8765` 启动应用并打开默认浏览器。此批处理入口是 Phase 1 的开发机可用版本；无需安装 Python/Node.js 的绿色 `StudentLog.exe` 在 Phase 4 交付。
-
-## Docker 运行方式
-
-Docker 部署是可选的服务器/开发环境运行方式，不改变默认的本地便携版数据结构。镜像内的 FastAPI 会直接托管 `frontend/dist`：
+Docker 是唯一正式运行方式。镜像内的 FastAPI 直接托管构建后的 React 页面：
 
 ```powershell
 docker compose pull
 docker compose up -d
 ```
 
-Compose 直接使用 Docker Hub 的 `docker.io/frayscc/studentlog:latest`，不在部署电脑上构建镜像。浏览器打开 `http://127.0.0.1:8765`。当前目录的 `./data` 映射到容器 `/app/data`，`./models` 映射到 `/app/models`；删除或升级容器不会覆盖这两个目录。全新数据库第一次打开时会显示初始化页面，由用户自行创建管理员用户名和密码，不再提供默认密码。建议在 `.env` 中为 `APP_SECRET` 设置一个长随机字符串。
+Compose 直接使用 Docker Hub 的 `docker.io/frayscc/studentlog:latest`。浏览器打开 `http://127.0.0.1:8765`。当前目录的 `./data` 映射到容器 `/app/data`，`./models` 映射到 `/app/models`；删除或升级容器不会覆盖这两个目录。全新数据库第一次打开时由用户创建管理员账号，不提供默认密码。正式使用前请复制 `.env.example` 为 `.env`，并为 `APP_SECRET` 设置长随机字符串。
+
+## Docker 开发
+
+后端热重载与 Vite 开发服务器均在容器内运行，开发电脑只需要 Docker：
+
+```powershell
+docker compose -f docker-compose.dev.yml up --build
+```
+
+开发页面为 `http://127.0.0.1:5173`，API 为 `http://127.0.0.1:8765`。生产 `docker-compose.yml` 始终只拉取 Docker Hub 镜像，不包含 `build`。
 
 ## 本地语音识别
 
-语音识别完全离线，默认使用 CPU 版 Paraformer，不再使用或配置阿里云 ASR。先安装本地语音依赖：
+语音识别完全离线，默认使用 CPU 版 Paraformer。镜像已经包含 ASR 运行依赖，模型单独下载到宿主机的 `./models`：
 
 ```powershell
-.venv\Scripts\pip install -r backend\requirements-asr.txt
+docker compose run --rm studentlog python scripts/download_asr_models.py paraformer
+# 可选回退模型
+docker compose run --rm studentlog python scripts/download_asr_models.py sensevoice
 ```
 
-模型文件独立保存在 `models/`，不打入 EXE，也不会在录音时静默下载。默认只下载推荐模型：
-
-```powershell
-.venv\Scripts\python launcher\download_asr_models.py paraformer
-# 可选的对照/回退模型
-.venv\Scripts\python launcher\download_asr_models.py sensevoice
-```
-
-下载过程由 ModelScope 显示进度。也可在联网电脑下载后完整复制 `models/paraformer/` 或 `models/sensevoice/` 到离线工作电脑。系统设置页可以切换模型并查看安装、加载和热词状态。
+下载过程由 ModelScope 显示进度。模型不会在点击录音后静默下载。也可以从其他电脑完整复制 `models/paraformer/` 或 `models/sensevoice/`。
 
 可选开发配置：
 
@@ -134,16 +111,13 @@ UTF-8 编码的 TXT 或 CSV 均可：
 ## 测试
 
 ```powershell
-$env:PYTHONPATH = "backend"
-.venv\Scripts\python -m pytest backend\tests
-cd frontend
-npm run build
+docker compose -f docker-compose.dev.yml run --rm studentlog pytest backend/tests
+docker compose -f docker-compose.dev.yml run --rm frontend npm run build
 ```
 
 ## 当前已知问题
 
 - 尚未完成 20–50 条真实中文录音的 Paraformer/SenseVoice 对照验收；自动化测试不加载大型模型；
 - 尚未用真实 DeepSeek Key 完成端到端调用，当前自动化测试使用 Mock LLM；
-- 阶段性 AI 摘要、PWA、草稿保护与 Windows 绿色 EXE 属于 Phase 4；
 - 全新数据库会在首次打开时要求创建本地管理员账号；已有数据库继续使用原账号，不会被升级覆盖；
-- `Start StudentLog.bat` 仍依赖开发机 Python，最终绿色 EXE 属于调整后的 Phase 4。
+- 不再计划 PWA、手机端专项适配、Windows 启动器或绿色 EXE；后续发布与升级均以 Docker 镜像为准。

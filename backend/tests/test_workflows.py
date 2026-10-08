@@ -152,6 +152,13 @@ def test_phase1_multi_student_event_and_avatar(tmp_path):
             exported_csv = client.get("/api/export/csv")
             assert exported_csv.status_code == 200
             assert "测试甲" in exported_csv.content.decode("utf-8-sig")
+            summary = client.post(f"/api/students/{ids[0]}/summary", json={"date_from": "2026-09-01T00:00:00", "date_to": "2026-09-30T23:59:59"})
+            assert summary.status_code == 200
+            assert summary.json()["source_event_count"] == 1
+            assert summary.json()["provider"] == "mock"
+            assert summary.json()["sections"]["discipline_records"] == ["2026-09-24：午休期间交谈，提醒后停止。"]
+            empty_summary = client.post(f"/api/students/{ids[0]}/summary", json={"date_from": "2030-01-01T00:00:00", "date_to": "2030-01-31T23:59:59"})
+            assert empty_summary.status_code == 400
             for student_id in ids:
                 timeline = client.get(f"/api/events?student_id={student_id}")
                 assert timeline.status_code == 200
